@@ -1,6 +1,7 @@
-// Summarized classic standard-edition abilities, not mobile/remastered skills.
+import {EXPANSION_GENERALS,STANDARD_UPDATES} from './expansion-generals.js';
+// Standard identity generals; variants are independent catalog entries.
 const g = (id,name,faction,hp,gender,title,skills) => ({id,name,faction,hp,gender,title,skills:skills.map(([name,text])=>({name,text})),source:`https://sanguosha.fandom.com/zh/wiki/${encodeURIComponent(name)}`});
-export const GENERALS = [
+const STANDARD_GENERALS = [
 g('caocao','曹操','魏',4,'男','魏武帝',[
  ['奸雄','受到伤害后，可获得造成此伤害的牌。'],['护驾','主公技：需要闪时，可请其他魏势力角色依次代为打出闪。']]),
 g('simayi','司马懿','魏',3,'男','狼顾之鬼',[
@@ -52,6 +53,8 @@ g('lvbu','吕布','群',4,'男','武的化身',[
 g('diaochan','貂蝉','群',3,'女','绝世的舞姬',[
  ['离间','出牌阶段限一次：弃一张牌，令一名男性角色视为对另一名男性角色使用决斗（经典版不可无懈）。'],['闭月','结束阶段可摸一张牌。']]),
 ];
+export const GENERAL_PACKS={standard:'标准',jie:'界限突破',wind:'风',fire:'火',forest:'林',mountain:'山',yin:'阴',thunder:'雷'};
+export const GENERALS=[...STANDARD_GENERALS.map(g=>({...g,baseName:g.name,pack:'standard',edition:'标准身份版',sourceNote:'与界版分开；复杂技能手动裁定',...STANDARD_UPDATES[g.id]})),...EXPANSION_GENERALS];
 export const GENERAL_MAP = Object.fromEntries(GENERALS.map(g=>[g.id,g]));
 export const ROLES = {lord:'主公',loyal:'忠臣',rebel:'反贼',spy:'内奸'};
 export const PHASES = ['准备','判定','摸牌','出牌','弃牌','结束'];

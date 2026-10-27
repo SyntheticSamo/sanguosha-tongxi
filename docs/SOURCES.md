@@ -1,29 +1,34 @@
-# 资料来源与版本口径
+# 资料来源
 
-核对日期：2026-10-27。
+核对日期：2026-10-27。名单范围由用户明确为标准27 + 界标26 + 神话再临48，不含神。
 
-## 收录范围
+## 武将
 
-- 经典标准版 25 将：魏 7、蜀 7、吴 8、群 3。
-- 标准游戏牌 104 张：基本 53、锦囊 34、装备 17。
-- EX 4 张：黑桃 2 寒冰剑、梅花 2 仁王盾、红桃 Q 闪电、方块 Q 无懈可击。
-- 104 + EX 的总牌数为 108，32 种名称；同名牌按花色、点数与独立 ID 存放。
-- 不含军争、界限突破、2013 标准版新增武将或之后的重做技能。经典仁德、遗计、离间等与后续版本有差异。
+- 标准：原25人 + 华雄、袁术；不把其他新标准替换名单再叠加。
+- 界标26：原25人的界版 + 界华雄。该范围按用户指定计数收录，不声称所有历史实体界限突破产品仅26张。
+- 神话48：风、火、林、山、阴、雷各8名普通将。
+- 标准/界/卧龙/雷袁术等同人物变体可在资料库并存，但不同时上桌。
 
-## 链接与核对方式
+主来源为 [三国杀 Wiki](https://sanguosha.fandom.com/zh/wiki/三国杀武将列表)，每个条目保留独立链接、所采用版次和已知差异。优先选明确列为实体身份版的后期修订，不把Mobile、Online、国战或只在收藏版外线上出现的重做直接当作实体最新。
 
-1. [三国杀 Wiki：规则](https://sanguosha.fandom.com/zh/wiki/%E8%A7%84%E5%88%99)：规则入口和区域术语。
-2. [三国杀 Wiki：武将列表](https://sanguosha.fandom.com/zh/wiki/%E4%B8%89%E5%9B%BD%E6%9D%80%E6%AD%A6%E5%B0%86%E5%88%97%E8%A1%A8)：版本区分、经典标准武将归属。每位武将的数据还提供其 Wiki 条目链接。
-3. [三国杀规则集 3.0：身份局资料](https://gltjk.com/sanguosha/rules/info/role.html)：核对牌名、花色、点数。该表同时包含军争等内容，项目只取标准 / EX 对应项，例如无懈仅取黑桃 J、梅花 Q/K 及 EX 方块 Q，不取军争黑桃 K 与红桃 A/K。
-4. [游戏官网：游戏规则](https://game.qidian.com/Game/showNews/index?name=sgs&nid=1082111)：交叉核对 25 将、104 + 4 EX 的经典组件口径和身份目标。
-5. [三国杀 OL 官网：标准版甄姬](https://www.sanguosha.com/news/20161025_6540_1618)：经典武将与技能背景的交叉参照。
+数据初始分包参照 [LTKGeneralList](https://github.com/zhangshenxing/LTKGeneralList/blob/master/index.html)（blob `c12732deb6383c5a89f2396483c137ec04511ad4`），该表自身声明技能/发行仅供参考，存在混合修订和错误。现已逐项修正高风险角色并保存版次，不能单凭该表推断实体最新。
 
-Wiki 部分页面在本次环境无法直接抓取，使用可见搜索条目、规则集与官网交叉核对；没有将受限页面当作已完整读取。项目中的技能文字为人工裁定的独立简写，不是逐字转载。没有宣称逐条 FAQ 已由代码自动覆盖；对技能时机有争议时，请同桌打开对应版本原文核对。
+已核实条目采用的后期版次含2017/2018神话、2020神话及界限、2022修订、2023《飞鸿印雪》、董卓2024、刘备2025等。实体版修订与未证实项详见 [CATALOG_VERSIONS.md](CATALOG_VERSIONS.md)，101项索引见 [ROSTER.md](ROSTER.md)。三项尤其不能冒称已核实最新印次：标准黄月英、界吕布后续体力、界关羽当前修订的精确实体发行。
 
-## 技术资料
+## 牌堆和基础规则
 
-- [MDN：WebRTC 连接建立与信令](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling)：信令与传输分离；邀请 / 回应通过人工渠道交换。
-- [MDN：WebRTC 协议、STUN 和 TURN](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols)：NAT 穿透和中继边界，不能保证所有网络都可直接连接。
-- [MDN：RTCDataChannel](https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel)：可靠有序数据通道与缓冲水位。
+- [身份局牌面分布](https://gltjk.com/sanguosha/rules/info/role.html)：区分标准104、EX4、军争52和额外木牛1，不混入国战牌。
+- [基本牌](https://gltjk.com/sanguosha/rules/card/basic.html)：杀、闪、桃、酒、属性杀。
+- [锦囊牌](https://gltjk.com/sanguosha/rules/card/scroll.html)：常用锦囊、延时、铁索与火攻。
+- [装备牌](https://gltjk.com/sanguosha/rules/card/equipment.html)：范围、坐骑、防具。
+- [拼点流程](https://gltjk.com/sanguosha/rules/flow/rankcompare.html)：秘密提交、同时公开、比较点数。
+- [三国杀OL FAQ](https://g.iqiyi.com/sanguosha/news/321006.html)：延时锦囊的无懈时机为判定阶段翻牌之前。
 
-当前 UI、美术排版、程序和技能简写为本项目实现。三国杀的名称、规则与相关商标属于相应权利人；项目不附带官方游戏美术资源。
+规则集表述中的「包括你在内的角色」等为多模式规则语法；本项目普通身份场的桃、酒和无中默认只对自己。自动范围及人工例外见README。
+
+## 技术
+
+- [MDN WebRTC](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols)：ICE、STUN、NAT与TURN。
+- [MDN RTCDataChannel](https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel)：有序可靠数据传输与缓冲。
+
+技能文字为功能性归纳，不附台词或原版插画。本项目不宣称已自动实现所有武将技能，亦不把未见实体牌面的版本认作2026最新印刷。

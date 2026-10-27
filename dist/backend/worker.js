@@ -1,4 +1,4 @@
-import { newRoom, joinRoom, reduce, project, validateState } from './engine.js';
+import { newRoom, joinRoom, reduce, project, validateState, migrateState } from './engine.js';
 import { saveSnapshot,loadSnapshot } from './storage.js';
 let state=null, routes=new Map(), seen=new Map(), controlled=null, undo=[];
 const emit=(kind,extra={})=>postMessage({kind,...extra});
@@ -14,7 +14,7 @@ async function handle(m){
   const route=m.route||'host';
   if(m.kind==='create'){state=newRoom(m.config);controlled=null;seen.clear();routes.clear();undo=[];await persist();broadcast();return;}
   if(m.kind==='restore'){
-    const candidate=m.snapshot||await loadSnapshot();if(!candidate)throw new Error('没有可恢复的本地存档');validateState(candidate);
+    const loaded=m.snapshot||await loadSnapshot();if(!loaded)throw new Error('没有可恢复的本地存档');const candidate=migrateState(loaded);
     state=structuredClone(candidate);controlled=null;routes.clear();seen.clear();undo=[];state.rev++;emit('restored',{roomId:state.roomId});await persist();broadcast();return;
   }
   if(!state)throw new Error('请先创建牌桌');

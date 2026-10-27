@@ -9,7 +9,7 @@ const browser=await chromium.launch({headless:true,...(process.env.BROWSER_PATH?
 const errors=[];const contexts=[];
 async function page(){const ctx=await browser.newContext({viewport:{width:1440,height:1050}});contexts.push(ctx);const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(base);return p;}
 const visible=p=>p.locator('#game:not([hidden])');
-const command=(p,name)=>p.locator(`[data-do="${name}"]:visible`).first().click();
+const command=async(p,name)=>{if(!await p.locator(`[data-do="${name}"]:visible`).count())await p.locator(`[data-do="${name}"]`).evaluateAll(bs=>{for(const b of bs){if(b.closest('[hidden]')||b.closest('dialog:not([open])'))continue;let a=b.parentElement;while(a){if(a.tagName==='DETAILS')a.open=true;a=a.parentElement;}}});await p.locator(`[data-do="${name}"]:visible`).first().click();};
 async function noStun(p){if(!await p.locator('#connect-dialog details').evaluate(d=>d.open))await p.locator('#connect-dialog summary').click();await p.locator('#use-stun').uncheck();}
 async function revision(p){return Number((await p.locator('#revision').textContent()).split('/')[1]);}
 async function waitRev(p,rev){await p.waitForFunction(r=>Number(document.querySelector('#revision').textContent.split('/')[1])>=r,rev);}
@@ -25,8 +25,7 @@ async function connect(host,guest){
 }
 try{
  const host=await page();await host.screenshot({path:path.join(dest,'01-home.png'),fullPage:true});
- await command(host,'create');await host.locator('#create-form [name=name]').fill('主持人');await host.locator('#create-form button.primary').click();await visible(host).waitFor();
- await command(host,'library');await host.locator('[data-general=caocao]').click();
+ await command(host,'create');await host.locator('#create-form [name=name]').fill('主持人');await host.locator('#create-form [name=mode]').selectOption('manual');await host.locator('#create-form button.primary').click();await visible(host).waitFor();
  const guests=[];for(let i=0;i<3;i++){const g=await page();await command(g,'join');await g.locator('#guest-name').fill('好友'+(i+1));await connect(host,g);guests.push(g);console.log(`Connected guest ${i+1}`);}
  await host.waitForFunction(()=>document.querySelectorAll('.seat').length===4);
  await command(host,'start');await host.waitForFunction(()=>document.querySelector('#hand').querySelectorAll('[data-card]').length===4);
@@ -53,8 +52,8 @@ try{
  const mobile=await page();await mobile.setViewportSize({width:390,height:844});await mobile.screenshot({path:path.join(dest,'03-mobile-home.png'),fullPage:true});await command(mobile,'practice');await visible(mobile).waitFor();
  for(let i=0;i<3;i++){const r=await revision(mobile);await command(mobile,'local-seat');await waitRev(mobile,r+1);}await command(mobile,'start');await mobile.waitForFunction(()=>document.querySelectorAll('#hand [data-card]').length===4);
  assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));await mobile.screenshot({path:path.join(dest,'04-mobile-table.png'),fullPage:true});
- await command(mobile,'library');assert.equal(await mobile.locator('.library-entry').count(),25);await mobile.locator('[data-library=cards]').click();assert.equal(await mobile.locator('.library-entry').count(),32);
- assert.deepEqual(errors,[]);console.log('PASS: 4 independent browser contexts, real WebRTC, draws, hidden transfers, public cards, chat escaping, refresh recovery, undo, mobile layout and 25/32 library entries.');
+ await command(mobile,'library');assert.equal(await mobile.locator('.library-entry').count(),101);await mobile.locator('[data-library=cards]').click();assert.equal(await mobile.locator('.library-entry').count(),44);
+ assert.deepEqual(errors,[]);console.log('PASS: four-browser WebRTC, free-table controls, recovery, undo, mobile layout and 101/44 catalog entries.');
 }catch(error){
  for(const ctx of contexts)for(const p of ctx.pages())console.error(await p.evaluate(()=>({status:document.querySelector('#connection-status')?.textContent,badge:document.querySelector('#network-badge')?.textContent,toast:document.querySelector('#toast')?.textContent})).catch(()=>({closed:true})));
  throw error;

@@ -1,20 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DECK,CARD_TYPES,CARD_BY_ID} from '../dist/data/cards.js';
+import {DECK,CARD_TYPES,CARD_BY_ID,deckFor} from '../dist/data/cards.js';
 import {GENERALS} from '../dist/data/generals.js';
 import {newRoom,joinRoom,reduce,project,validateState,shuffle} from '../dist/backend/engine.js';
 import {envelope,parseMessage,acceptSnapshot} from '../dist/sync/protocol.js';
 const host='host',token='h'.repeat(32);
-function lobby(n=4,ex=true){let s=newRoom({hostId:host,token,size:n,ex,name:'主持人'});for(let i=1;i<n;i++)s=joinRoom(s,{token:String(i).repeat(32),name:'玩家'+i}).state;return s;}
+function lobby(n=4,ex=true){let s=newRoom({hostId:host,token,size:n,ex,name:'主持人',mode:'manual',deckSet:'standard',selectionMode:'random'});for(let i=1;i<n;i++)s=joinRoom(s,{token:String(i).repeat(32),name:'玩家'+i}).state;return s;}
 const act=(s,actor,type,extra={})=>reduce(s,actor,{type,rev:s.rev,...extra});
 const start=(n=4,ex=true)=>act(lobby(n,ex),host,'start');
 function locate(s,kind,player=s.players[0]){
-  const id=DECK.find(c=>c.kind===kind&&(s.ex||!c.ex)).id;
+ const id=deckFor(s.deckSet,s.ex).find(c=>c.kind===kind).id;
   for(const zone of [s.deck,s.discard,s.pool,...Object.values(s.peek),...s.players.flatMap(p=>[p.hand,p.equip,p.judge])]){const i=zone.indexOf(id);if(i>=0)zone.splice(i,1);}player.hand.push(id);return id;
 }
-test('catalog has exact classic standard / EX counts and 25 unique generals',()=>{
- assert.equal(DECK.length,108);assert.equal(DECK.filter(c=>!c.ex).length,104);assert.equal(new Set(DECK.map(c=>c.id)).size,108);assert.equal(CARD_TYPES.length,32);assert.equal(GENERALS.length,25);
- for(const [kind,count]of Object.entries({sha:30,shan:15,tao:8,chai:6,shun:5,wuxie:3,bagua:2}))assert.equal(DECK.filter(c=>!c.ex&&c.kind===kind).length,count);
+test('catalog preserves classic standard / EX counts and adds military deck',()=>{
+ assert.equal(deckFor('standard').length,108);assert.equal(deckFor('standard',false).length,104);assert.equal(new Set(DECK.map(c=>c.id)).size,DECK.length);assert.equal(deckFor('army').length,160);assert.equal(deckFor('wood').length,161);
+ for(const [kind,count]of Object.entries({sha:30,shan:15,tao:8,chai:6,shun:5,wuxie:3,bagua:2}))assert.equal(deckFor('standard',false).filter(c=>c.kind===kind).length,count);
  assert.deepEqual(DECK.filter(c=>c.ex).map(c=>c.kind),['hanbing','renwang','shandian','wuxie']);
 });
 test('every 2–8 seat layout starts with conserved cards and one public lord',()=>{

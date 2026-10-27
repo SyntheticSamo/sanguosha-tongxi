@@ -1,4 +1,4 @@
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 export const MAX_PACKET = 524288;
 export const envelope = (kind,data={})=>({v:PROTOCOL,kind,...data});
 export function parseMessage(raw){
@@ -6,7 +6,7 @@ export function parseMessage(raw){
   const m=JSON.parse(raw);if(m.v!==PROTOCOL||!['hello','action','sync','snapshot','ack','error'].includes(m.kind))throw new Error('联机协议不兼容');return m;
 }
 export function acceptSnapshot(previous,next){
-  if(!next||next.schema!==1||!Number.isSafeInteger(next.rev)||!Array.isArray(next.players))throw new Error('同步数据无效');
+  if(!next||next.schema!==2||!Number.isSafeInteger(next.rev)||!Array.isArray(next.players))throw new Error('同步数据版本不同，请刷新网页');
   if(previous&&previous.roomId!==next.roomId)throw new Error('房间不匹配');
   return !previous||next.rev>=previous.rev;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "sanguosha-tongxi", "version": "1.0.0", "private": true,
+  "name": "sanguosha-tongxi", "version": "2.0.0", "private": true,
   "type": "module", "engines": { "node": ">=22" },
   "scripts": { "start": "node scripts/serve.mjs", "test": "node --test", "check": "node scripts/check.mjs" }
 }

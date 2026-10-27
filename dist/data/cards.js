@@ -36,11 +36,23 @@ export const CARD_TYPES = [
   def('zixing','紫骍','装备','你计算与其他角色的距离时减1。',{slot:'minus'}),
   def('hanbing','寒冰剑','装备','攻击范围2；杀造成伤害时，可防止此伤害，改为依次弃置目标两张牌。',{slot:'weapon',range:2,ex:true}),
   def('renwang','仁王盾','装备','锁定：黑色杀对你无效。',{slot:'armor',ex:true}),
+  def('fire_sha','火杀','基本','按杀使用，造成火焰伤害。',{pack:'army'}),
+  def('thunder_sha','雷杀','基本','按杀使用，造成雷电伤害。',{pack:'army'}),
+  def('jiu','酒','基本','出牌阶段每回合限一次，令本回合下一张杀的伤害基数加1；自己濒死时可使用以回复1点体力。',{pack:'army'}),
+  def('huogong','火攻','锦囊','目标展示一张手牌，你可弃同花色手牌，对其造成1点火焰伤害。',{pack:'army'}),
+  def('tiesuo','铁索连环','锦囊','横置或重置至多两名角色；也可重铸摸一张牌。',{pack:'army'}),
+  def('bingliang','兵粮寸断','延时','距离1以内放置，判定不为梅花则跳过摸牌阶段。',{pack:'army'}),
+  def('guding','古锭刀','装备','攻击范围2；杀对没有手牌的目标造成伤害时，伤害加1。',{slot:'weapon',range:2,pack:'army'}),
+  def('zhuque','朱雀羽扇','装备','攻击范围4；使用普通杀时可选择转为火杀。',{slot:'weapon',range:4,pack:'army'}),
+  def('tengjia','藤甲','装备','普通杀、南蛮入侵、万箭齐发无效；受到火焰伤害加1。',{slot:'armor',pack:'army'}),
+  def('baiyin','白银狮子','装备','受到的伤害至多1点；失去装备区中的此牌后回复1点体力。',{slot:'armor',pack:'army'}),
+  def('hualiu','骅骝','装备','其他角色计算与你的距离时加1。',{slot:'plus',pack:'army'}),
+  def('muniu','木牛流马','装备','出牌阶段限一次，可将一张手牌扣置于此；可将此装备移给其他角色，储牌随之移动。需手动裁定。',{slot:'treasure',pack:'wood',manual:true}),
 ];
 export const CARD_MAP = Object.fromEntries(CARD_TYPES.map(c => [c.id,c]));
 const deck = [];
 function add(kind, suit, ranks, ex=false) {
-  for (const rank of ranks) deck.push({id:`c${String(deck.length+1).padStart(3,'0')}`,kind,suit,rank,ex});
+  for (const rank of ranks) deck.push({id:`c${String(deck.length+1).padStart(3,'0')}`,kind,suit,rank,ex,pack:deck.length<108?'standard':'army'});
 }
 add('sha','S',[7,8,8,9,9,10,10]); add('sha','H',[10,10,11]);
 add('sha','C',[2,3,4,5,6,7,8,8,9,9,10,10,11,11]); add('sha','D',[6,7,8,9,10,13]);
@@ -60,7 +72,17 @@ add('fangtian','D',[12]); add('qilin','H',[5]); add('bagua','S',[2]); add('bagua
 add('jueying','S',[5]); add('dilu','C',[5]); add('zhuahuang','H',[13]);
 add('chitu','H',[5]); add('dayuan','S',[13]); add('zixing','D',[13]);
 add('hanbing','S',[2],true); add('renwang','C',[2],true); add('shandian','H',[12],true); add('wuxie','D',[12],true);
+add('fire_sha','H',[4,7,10]); add('fire_sha','D',[4,5]);
+add('thunder_sha','S',[4,5,6,7,8]); add('thunder_sha','C',[5,6,7,8]);
+add('shan','H',[8,9,11,12]); add('shan','D',[6,7,8,10,11]);
+add('tao','H',[5,6]); add('tao','D',[2,3]); add('jiu','S',[3,9]); add('jiu','C',[3,9]); add('jiu','D',[9]);
+add('huogong','H',[2,3]); add('huogong','D',[12]); add('tiesuo','S',[11,12]); add('tiesuo','C',[10,11,12,13]);
+add('wuxie','S',[13]); add('wuxie','H',[1,13]); add('bingliang','S',[10]); add('bingliang','C',[4]);
+add('guding','S',[1]); add('zhuque','D',[1]); add('tengjia','S',[2]); add('tengjia','C',[2]); add('baiyin','C',[1]); add('hualiu','D',[13]);
+add('muniu','D',[5]); deck.at(-1).pack='wood';
 export const DECK = Object.freeze(deck.map(Object.freeze));
+export const DECK_SETS={standard:'标准',army:'标准 + 军争',wood:'标准 + 军争 + 木牛'};
+export const deckFor=(set='army',ex=true)=>DECK.filter(c=>(ex||!c.ex)&&(c.pack==='standard'||c.pack==='army'&&set!=='standard'||c.pack==='wood'&&set==='wood'));
 export const CARD_BY_ID = Object.fromEntries(DECK.map(c => [c.id,c]));
 export const cardName = id => CARD_MAP[CARD_BY_ID[id]?.kind]?.name || '未知牌';
 export const cardLabel = id => { const c=CARD_BY_ID[id]; return c ? `${SUITS[c.suit]}${rankText(c.rank)} ${cardName(id)}` : '未知牌'; };
