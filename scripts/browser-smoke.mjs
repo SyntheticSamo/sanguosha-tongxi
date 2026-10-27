@@ -34,7 +34,7 @@ try{
  const hands=await Promise.all([host,...guests].map(p=>p.locator('#hand [data-card]').evaluateAll(bs=>bs.map(b=>b.dataset.card))));assert.equal(new Set(hands.flat()).size,16);
  await host.screenshot({path:path.join(dest,'02-table.png'),fullPage:true});
  await command(guests[0],'draw');await guests[0].waitForFunction(()=>document.querySelectorAll('#hand [data-card]').length===6);let rev=await revision(guests[0]);await waitRev(host,rev);for(const g of guests)await waitRev(g,rev);
- const guestName='好友1';const targetId=await host.locator('#target option').evaluateAll(opts=>opts.find(o=>o.textContent.startsWith('好友1')).value);await host.locator('#target').selectOption(targetId);
+ const targetId=await host.locator('.seat').filter({has:host.locator('.seat-name',{hasText:'好友1'})}).getAttribute('data-seat');await host.locator(`[data-target-seat="${targetId}"]`).click();
  const gift=await host.locator('#hand [data-card]').first().getAttribute('data-card');await host.locator(`#hand [data-card="${gift}"]`).click();await command(host,'give');await guests[0].waitForFunction(id=>!!document.querySelector(`#hand [data-card="${id}"]`),gift);assert.equal(await guests[0].locator('#hand [data-card]').count(),7);
  const play=await guests[0].locator('#hand [data-card]').first().getAttribute('data-card');await guests[0].locator(`#hand [data-card="${play}"]`).click();await command(guests[0],'play');await host.waitForFunction(id=>!!document.querySelector(`#pool [data-card="${id}"]`),play);
  await command(host,'clear-pool');await host.waitForFunction(()=>document.querySelector('#pool [data-card]')===null);
@@ -51,7 +51,7 @@ try{
  // Mobile layout and complete library inventory.
  const mobile=await page();await mobile.setViewportSize({width:390,height:844});await mobile.screenshot({path:path.join(dest,'03-mobile-home.png'),fullPage:true});await command(mobile,'practice');await visible(mobile).waitFor();
  for(let i=0;i<3;i++){const r=await revision(mobile);await command(mobile,'local-seat');await waitRev(mobile,r+1);}await command(mobile,'start');await mobile.waitForFunction(()=>document.querySelectorAll('#hand [data-card]').length===4);
- assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));await mobile.screenshot({path:path.join(dest,'04-mobile-table.png'),fullPage:true});
+ assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));assert.equal(await mobile.locator('#target, #target2').count(),0);await mobile.locator('[data-target-seat]').nth(1).click();assert.equal(await mobile.locator('[data-target-seat][aria-pressed=true]').count(),1);await mobile.screenshot({path:path.join(dest,'04-mobile-table.png'),fullPage:true});
  await command(mobile,'library');assert.equal(await mobile.locator('.library-entry').count(),101);await mobile.locator('[data-library=cards]').click();assert.equal(await mobile.locator('.library-entry').count(),44);
  assert.deepEqual(errors,[]);console.log('PASS: four-browser WebRTC, free-table controls, recovery, undo, mobile layout and 101/44 catalog entries.');
 }catch(error){

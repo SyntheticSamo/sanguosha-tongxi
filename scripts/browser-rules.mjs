@@ -20,7 +20,9 @@ async function connect(h,g){
 }
 const byKind=(kind,n=0)=>DECK.filter(c=>c.kind===kind)[n].id;
 async function select(p,id){await p.locator(`#hand [data-card="${id}"]`).click();}
-async function play(p,id,target){await p.locator('#target').selectOption(target);await select(p,id);const n=await rev(p);await cmd(p,'play');await waitRev(p,n+1);}
+async function pickTarget(p,id){const button=p.locator(`[data-target-seat="${id}"]`);if(await button.getAttribute('aria-pressed')!=='true')await button.click();}
+async function play(p,id,target){await select(p,id);await pickTarget(p,target);const n=await rev(p);await cmd(p,'play');await waitRev(p,n+1);}
+async function passBoth(h,g){let n=await rev(h);await cmd(h,'pass');await waitRev(g,n+1);n=await rev(g);await cmd(g,'pass');await waitRev(h,n+1);}
 try{
  const host=await page(),guest=await page();await cmd(host,'create');await host.locator('[name=size]').selectOption('2');await host.locator('[name=selectionMode]').selectOption('five');await host.locator('#create-form button.primary').click();await host.locator('#game:not([hidden])').waitFor();await connect(host,guest);
  const candidateLists=[];
@@ -33,18 +35,31 @@ try{
  let s=newRoom({hostId:'host',token:'h'.repeat(32),size:2,roomId,mode:'auto',selectionMode:'random'});s=joinRoom(s,{token:entry[1],name:'响应者'}).state;s=reduce(s,'host',{type:'start',rev:s.rev});s.players.forEach(p=>{s.deck.push(...p.hand);p.hand=[];p.hp=4;p.maxHp=4;});
  s.players[0].general='caocao';s.players[0].role='lord';s.players[0].roleOpen=true;s.players[0].hp=3;s.players[1].general='guanyu';s.players[1].role='spy';s.players[1].roleOpen=false;
  const move=(id,p,zone='hand')=>{s.deck.splice(s.deck.indexOf(id),1);p[zone].push(id);};
- const sha1=byKind('sha'),sha2=byKind('sha',1),wine=byKind('jiu'),peach=byKind('tao'),dodge=byKind('shan'),extra=byKind('sha',3),reply=byKind('tao',1);
- for(const id of [sha1,sha2,wine,peach,extra])move(id,s.players[0]);move(byKind('liannu'),s.players[0],'equip');for(const id of [dodge,reply])move(id,s.players[1]);s.turn='host';s.phase=3;s.rev=200;validateState(s);
+ const sha1=byKind('sha'),sha2=byKind('sha',1),wine=byKind('jiu'),peach=byKind('tao'),dodge=byKind('shan'),extra=byKind('sha',3),reply=byKind('tao',1),chain=byKind('tiesuo'),borrow=byKind('jiedao');
+ for(const id of [sha1,sha2,wine,peach,extra,chain,borrow])move(id,s.players[0]);move(byKind('liannu'),s.players[0],'equip');move(byKind('qilin'),s.players[1],'equip');for(const id of [dodge,reply])move(id,s.players[1]);s.turn='host';s.phase=3;s.rev=200;validateState(s);
  await cmd(host,'tools');await host.locator('#import-file').setInputFiles({name:'rules-fixture.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(s))});await waitRev(host,201);await connect(host,guest);await waitRev(guest,201);
  const foe=s.players[1].id;
+ assert.equal(await host.locator('#target, #target2').count(),0);
+ await pickTarget(host,foe);await host.locator(`[data-target-seat="${foe}"]`).click();assert.equal(await host.locator('[data-target-seat][aria-pressed=true]').count(),0);
+ const self=host.locator('[data-target-seat=host]');await self.focus();await self.press('Enter');assert.equal(await self.getAttribute('aria-pressed'),'true');await self.press('Space');assert.equal(await self.getAttribute('aria-pressed'),'false');
+ await pickTarget(host,foe);await host.locator(`#seats [data-card="${byKind('liannu')}"]`).click();assert.equal(await host.locator(`[data-target-seat="${foe}"]`).getAttribute('aria-pressed'),'true');assert.equal(await self.getAttribute('aria-pressed'),'false');
  await play(host,sha1,foe);await guest.locator('#response-panel [data-do=respond]').waitFor();await guest.screenshot({path:path.join(dest,'05-auto-response.png'),fullPage:true});
  await select(guest,dodge);await cmd(guest,'respond');await host.waitForFunction(()=>document.querySelector('#response-panel').hidden);assert((await host.locator(`[data-seat="${foe}"] .seat-hp`).textContent()).includes('4/4'));
  await play(host,wine,'host');assert((await host.locator('#range-info').textContent()).includes('酒 +1'));await play(host,sha2,foe);
  await host.reload();await cmd(host,'restore');await host.locator('#response-panel').waitFor();await connect(host,guest);await guest.locator('#response-panel [data-do=pass]').waitFor();await cmd(guest,'pass');await host.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('2/4'),foe);
  await play(host,peach,'host');assert((await host.locator('[data-seat=host] .seat-hp').textContent()).includes('4/4'));
- await host.locator('#target').selectOption(foe);await cmd(host,'pindian');await select(host,extra);await cmd(host,'respond');await guest.waitForFunction(()=>document.querySelector('#logs').textContent.includes('已选择拼点牌'));assert.equal(await guest.locator(`#pool [data-card="${extra}"]`).count(),0);await select(guest,reply);await cmd(guest,'respond');await host.waitForFunction(()=>document.querySelector('#last-result').textContent.includes('拼点'));
+ await pickTarget(host,foe);await cmd(host,'pindian');await select(host,extra);await cmd(host,'respond');await guest.waitForFunction(()=>document.querySelector('#logs').textContent.includes('已选择拼点牌'));assert.equal(await guest.locator(`#pool [data-card="${extra}"]`).count(),0);await select(guest,reply);await cmd(guest,'respond');await host.waitForFunction(()=>document.querySelector('#last-result').textContent.includes('拼点'));
  await cmd(host,'judge');await host.locator('#response-panel [data-do=pass]').waitFor();await cmd(host,'pass');await host.waitForFunction(()=>document.querySelector('#last-result').textContent.includes('判定'));
- await host.locator('#target').selectOption(foe);await cmd(host,'tools');await host.locator('#correction-controls summary').click();await host.locator('#correction-op').selectOption('hp');await host.locator('#correction-value').fill('3');await host.locator('#correction-reason').fill('测试手动纠正');let n=await rev(host);await cmd(host,'correct');await waitRev(host,n+1);await guest.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('3/4'),foe);await cmd(host,'undo');await guest.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('2/4'),foe);await host.locator('#tools-dialog [data-close]').click();
+ await pickTarget(host,foe);await cmd(host,'tools');await host.locator('#correction-controls summary').click();await host.locator('#correction-op').selectOption('hp');await host.locator('#correction-value').fill('3');await host.locator('#correction-reason').fill('测试手动纠正');let n=await rev(host);await cmd(host,'correct');await waitRev(host,n+1);await guest.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('3/4'),foe);await cmd(host,'undo');await guest.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('2/4'),foe);await host.locator('#tools-dialog [data-close]').click();
  await host.screenshot({path:path.join(dest,'06-auto-table.png'),fullPage:true});assert.deepEqual(errors,[]);
- console.log('PASS: five private choices per player, auto slash/dodge/wine/peach, pending-response refresh and reconnect, hidden pindian, judgment, host correction and undo.');
+ // Ordered targets now come only from player frames, including both trick flows.
+ await select(host,chain);await cmd(host,'clear-targets');await pickTarget(host,foe);await pickTarget(host,'host');
+ assert.equal(await host.locator(`[data-target-seat="${foe}"] .target-index`).textContent(),'1');assert.equal(await host.locator('[data-target-seat=host] .target-index').textContent(),'2');
+ await host.locator(`[data-target-seat="${foe}"]`).click();assert.equal(await self.locator('.target-index').textContent(),'1');await pickTarget(host,foe);
+ let turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await passBoth(host,guest);
+ assert((await host.locator('[data-seat=host] .seat-hp').textContent()).includes('铁索'));assert((await host.locator(`[data-seat="${foe}"] .seat-hp`).textContent()).includes('铁索'));
+ await select(host,borrow);await cmd(host,'clear-targets');await pickTarget(host,foe);await pickTarget(host,'host');await host.screenshot({path:path.join(dest,'07-click-targets.png'),fullPage:true});
+ turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await guest.waitForFunction(()=>document.querySelector('#response-panel').textContent.includes('借刀'));
+ turnRev=await rev(guest);await cmd(guest,'pass');await waitRev(host,turnRev+1);assert.equal(await host.locator(`#hand [data-card="${byKind('qilin')}"]`).count(),1);assert.deepEqual(errors,[]);
+ console.log('PASS: player-frame targeting, deselection, keyboard activation, nested equipment controls, ordered chain and borrowed-sword targets, auto rules and reconnect.');
 }catch(error){for(const c of contexts)for(const p of c.pages())console.error(await p.evaluate(()=>({toast:document.querySelector('#toast')?.textContent,status:document.querySelector('#connection-status')?.textContent})).catch(()=>({closed:true})));throw error;}finally{await browser.close();}
