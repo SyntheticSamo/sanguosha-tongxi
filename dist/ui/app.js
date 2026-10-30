@@ -30,6 +30,12 @@ function closeAll(){document.querySelectorAll('dialog[open]').forEach(d=>d.close
 function status(message){$('connection-status').textContent=message;}
 function setBadge(text,ok=false){$('scene-network').title=text;$('scene-network').style.color=ok?'#a7c98e':'#d2b478';$('network-badge').innerHTML=`<i style="background:${ok?'#7d9b78':'#b19360'}"></i>${esc(text)}`;}
 function reset(){ui.reset();lessonRequested=false;for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
+function exitPractice(){
+  if(!view?.practice)return;
+  closeAll();reset();isHost=false;actionCallback=null;clearTimeout(toastTimer);$('toast').hidden=true;
+  $('game').hidden=true;$('welcome').hidden=false;$('practice-exit').hidden=true;setBadge('本地就绪',true);
+  window.scrollTo({top:0,behavior:'instant'});document.querySelector('#welcome [data-do=practice]').focus({preventScroll:true});
+}
 function startWorker(){
   worker=new Worker(new URL('../backend/worker.js',import.meta.url),{type:'module'});
   worker.onerror=e=>toast(`本地后端异常：${e.message}`);
@@ -183,7 +189,7 @@ const actions={
   create:()=>open('create-dialog'),
   join:()=>{ui.connectRole('guest');open('connect-dialog');$('offer-input').focus();},
   connect:()=>{ui.connectRole(isHost?'host':'guest');open('connect-dialog');},
-  practice:()=>create(true,{quickStart:true}),tutorial:()=>{closeAll();document.querySelector('#tutorial-dialog [data-ui=tutorial-start]').textContent=view?'在当前牌桌显示提示':'进入教学演练';open('tutorial-dialog');},
+  practice:()=>create(true,{quickStart:true}),'exit-practice':exitPractice,tutorial:()=>{closeAll();document.querySelector('#tutorial-dialog [data-ui=tutorial-start]').textContent=view?'在当前牌桌显示提示':'进入教学演练';open('tutorial-dialog');},
   library:()=>{if(view?.status==='lobby'&&view.selectionMode!=='random')libraryMode='generals';renderLibrary();open('library-dialog');},rules:()=>open('rules-dialog'),tools:()=>open('tools-dialog'),
   offer,answer,accept,sync,
   'copy-offer':()=>copy($('offer-output')),'copy-answer':()=>copy($('answer-output')),

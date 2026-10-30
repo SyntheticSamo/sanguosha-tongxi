@@ -52,7 +52,7 @@ export class Tabletop {
   ignoreClick(e){return performance.now()<this.ignoreClickUntil&&e?.target.closest('[data-card]')?.dataset.card===this.ignoredCard;}
   show(id){const d=$(id);if(!d.open)d.showModal();}
   detail(title,text){$('detail-title').textContent=title;$('detail-copy').textContent=text;this.show('detail-dialog');}
-  reset(){this.scene.effects.resultUntil=0;this.scene.effects.node.innerHTML='';this.scene.relations.selected=null;this.scene.clearMotion();this.scene.openingRequested=false;document.body.classList.remove('game-open');this.cancelDrag();clearTimeout(this.newCardCleanup);this.conversion=null;this.multi=false;this.order=[];this.newCards.clear();this.context='';this.lastView=null;this.suppressEffects=true;this.coach=-1;$('tutorial-coach').hidden=true;}
+  reset(){this.scene.effects.resultUntil=0;this.scene.effects.node.innerHTML='';this.scene.relations.selected=null;this.scene.hidePreview();clearTimeout(this.scene.touchTimer);this.scene.clearMotion();this.scene.openingRequested=false;document.body.classList.remove('game-open');this.cancelDrag();clearTimeout(this.newCardCleanup);this.conversion=null;this.multi=false;this.order=[];this.newCards.clear();this.context='';this.lastView=null;this.suppressEffects=true;this.coach=-1;$('tutorial-coach').hidden=true;}
   baseline(){this.scene.effects.resultUntil=0;this.scene.baseline();this.newCards.clear();this.animatedCards.clear();this.suppressEffects=true;this.cancelDrag();}
   render(){
     const {view:v,isHost}=this.current();if(!v)return;
@@ -66,6 +66,7 @@ export class Tabletop {
     const animateScene=!this.suppressEffects&&!!old;this.suppressEffects=false;if(v.tableExperience)this.scene.motion.prepare(old,animateScene);this.lastView=v;
     const focus=document.activeElement,focusCard=focus?.dataset?.card,focusTarget=focus?.dataset?.targetSeat;
     $('welcome').hidden=true;$('game').hidden=false;$('game').dataset.size=v.size;$('game').dataset.phase=v.phase;
+    $('practice-exit').hidden=!v.practice;document.querySelector('.stage-header [data-do=connect]').hidden=!!v.practice;
     const lobby=v.status==='lobby',turn=v.players.find(p=>p.id===v.turn);
     $('room-title').textContent=v.status==='finished'?`${v.winner} · 对局结束`:lobby?'好友入席，静候开局':`${turn?.name} · ${PHASES[v.phase]}阶段`;
     $('revision').textContent=`SYNC / ${v.rev}`;$('room-size').textContent=`${v.players.length} / ${v.size}`;

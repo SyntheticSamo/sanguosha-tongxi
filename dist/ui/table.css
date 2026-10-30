@@ -207,3 +207,6 @@ body.game-open #game{width:100%;max-width:none;padding:0;margin:0}
 @media(max-width:760px) and (orientation:portrait), (max-height:500px) and (orientation:landscape){#game .center-plays:has(.center-card){height:80px}.center-card{height:74px;width:48px;padding:3px}.center-card .card-name{font-size:13px;line-height:1.1;max-height:48px}.center-card .card-name.name-long{font-size:10px;line-height:1.05}.center-card .card-name.name-xlong{font-size:8px;line-height:1.05}.center-card .card-meta,.center-card .card-category{font-size:7px}}
 
 .center-card:has(~.center-card):not(.effect-preview)>small{display:none}
+
+.stage-header .practice-exit{color:inherit;font-size:12px;min-height:30px;padding:4px 8px;white-space:nowrap}
+.stage-header:has(#practice-exit:not([hidden])) .orientation-hint{display:none}

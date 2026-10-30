@@ -58,6 +58,8 @@ node scripts/serve.mjs
 
 在线游玩：[三国杀 · 同席](https://syntheticsamo.github.io/sanguosha-tongxi/)。网站由 GitHub Pages 独立托管，朋友无需 GPT 账号。也可各自本地运行同一版本，再交换邀请。
 
+本地演练顶部有「返回主页」按钮，可随时退出演练，再开新桌或恢复最近存档。
+
 ## 建桌和选将
 
 建桌选择人数、结算模式、牌堆和武将包：
