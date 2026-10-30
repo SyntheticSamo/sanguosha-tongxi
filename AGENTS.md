@@ -21,6 +21,8 @@
 - `dist/sync/` 管理协议和传输，不能根据界面状态推测隐藏牌。
 - `dist/ui/` 只渲染投影视图、发送意图和管理连接；静态服务在 `scripts/serve.mjs`，不参与联机。
 - 发布 `dist/` 原样即可；如增加构建工具，必须说明必要性并保留简单运行路径。
+- 首选独立静态托管 GitHub Pages；`.github/workflows/site.yml` 在 PR 和 main 检查，仅在仓库变量 `PAGES_ENABLED=true` 时发布 main。部署只上传 `dist/`，不得依赖 Sites 凭据或服务；资源和 Worker 路径须兼容 `/sanguosha-tongxi/` 项目子路径。
+- 协作流程见 `CONTRIBUTING.md`。修改仓库可见性或邀请具体协作者需有用户授权，不因启用发布工作流自动公开私有源码。
 
 ## 必须保持的不变量
 

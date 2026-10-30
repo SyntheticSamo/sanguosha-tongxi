@@ -1,28 +1,36 @@
-# 部署说明
+# 独立托管与发布
 
-2026-10-30。源码版本6.0.0，schema／protocol6。
+## GitHub Pages
 
-## 当前站点
+- 仓库：https://github.com/SyntheticSamo/sanguosha-tongxi
+- 目标网址：https://syntheticsamo.github.io/sanguosha-tongxi/
+- 发布内容：完整 `dist/`，无需构建、安装依赖或 GPT/Sites 服务。
+- 发布配置：[`.github/workflows/site.yml`](../.github/workflows/site.yml)。
 
-- 原网址：https://sanguosha-tongxi-andy.glass-peacock.chatgpt.site
-- 托管配置：`.openai/hosting.json`，静态目录为`dist`，保留原项目ID。
-- 用户确认原站点由另一位发布者创建。当前Sites连接读取该项目返回`Sites project not found`，可访问站点列表为空，因此本次不能用当前账号更新原网址；不能把GitHub推送称为公网发布成功。
-- 原发布者可在Sites提供编辑权限，或在其原账号／工作区完成发布。也可另选本人名下的静态托管；更换站点需显式选择，不能把新网址当作原网址更新。
+当前已准备发布流程，尚未启用 Pages。2026-10-30 实测 GitHub 拒绝为当前私有仓库启用 Pages，原因为账号套餐不支持。免费启用需由仓库所有者确认将源码公开；也可以保留私有并使用支持私有 Pages 的套餐。官方范围见 [GitHub Pages 文档](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。不能把源码推送或本机测试称为线上部署成功。
 
-## 是否需要后端
+启用方式：
 
-当前项目没有常驻游戏后端、中心信令、账号服务或云数据库。`dist/backend`是在房主浏览器Worker中运行的规则内核，存档在房主浏览器IndexedDB；好友经WebRTC交换操作及各自可见的快照。静态托管只分发网页、脚本、样式与SVG。
+1. 确保账号套餐和仓库可见性支持 Pages。
+2. 仓库 Settings → Pages → Build and deployment，将 Source 设为 **GitHub Actions**。
+3. Settings → Secrets and variables → Actions → Variables，创建仓库变量 `PAGES_ENABLED`，值为 `true`。这是发布开关，不是密钥。
+4. Actions → **Check and deploy** → Run workflow，选择 `main`。首次手动运行后，之后推送或合并到 `main` 会自动发布。
+5. 等待 Check source and rules 与 Deploy GitHub Pages 成功，打开部署结果中的网址。建议在 Settings → Environments → github-pages 限制仅 `main` 可部署。
 
-STUN为可选服务，TURN由使用者自行配置。没有后端不意味着所有网络都能直连；不同NAT环境可能仍需TURN。
+PR 只运行检查，不部署。部署作业只使用 GitHub 自动提供、作用于当前仓库的 `GITHUB_TOKEN`，不需要添加个人 Token 或 Sites 凭据；部署包只包含 `dist/`。关闭自动发布时将 `PAGES_ENABLED` 改为 `false`，已发布的网站仍会保留。
 
-## GitHub与发布
+`syntheticsamo.github.io/sanguosha-tongxi/` 是现有仓库对应的项目网址，不占用账号主页。若需要根网址 `syntheticsamo.github.io/`，须另外配置同名用户站点仓库；不要覆盖已有主页。本项目中的 HTML、模块、CSS 和 Worker 均使用相对路径，可部署到项目子路径。
 
-仓库没有GitHub Actions发布工作流。提交／推送源码与Sites保存版本／部署是不同步骤，需分别核对结果；外部托管是否另有自动发布设置不能仅由Git推送推断。
+## 游戏与存档
 
-发布时上传完整`dist/`，无需构建。Sites需要同步其绑定源码仓库、保存与该提交对应的静态包，再部署已保存版本；保持原访问范围，部署成功后核对线上文件，不能把本机测试当作公网验证。
+`dist/backend/` 在房主浏览器 Worker 内运行，不是需要云服务器启动的服务。房主通过 WebRTC 与朋友同步；静态托管只分发网页文件。STUN 可选，TURN 由使用者配置，公网直连仍受 NAT 和防火墙影响。
 
-## 后续域名
+浏览器 IndexedDB 和 sessionStorage 不跨域共享。房主可先在旧站导出完整恢复存档，再到新站导入；但朋友在新站不会自动拥有旧来源的席位凭据，当前也没有跨域迁移好友凭据的界面。进行中的旧局建议在原站完成，再从新网址建桌；不能承诺导入后好友会自动认领原席位。所有玩家须使用同一协议版本。完整恢复存档含隐藏牌、身份和凭据，由房主私下保管。
 
-域名和网站托管相互独立，可以先使用平台提供的网址，之后再绑定自有域名或子域名。Sites提供自定义域名绑定入口，会返回相应DNS记录；应以实际返回的CNAME、A及验证记录为准，不预填目标。绑定需要相应站点权限和域名DNS管理权限。仅绑定域名不需要增加游戏后端。
+## 其他静态托管与原站
 
-更换访问域名会改变浏览器存储来源。已有房主应先导出自己的完整恢复存档，再在新域名恢复；完整存档含其他玩家秘密，只能由房主保管。
+任意 HTTPS 静态托管上传 `dist/` 即可。不能通过 `file://` 打开模块与 Worker；本地调试运行 `node scripts/serve.mjs`。
+
+旧 Sites 地址：https://sanguosha-tongxi-andy.glass-peacock.chatgpt.site 。独立托管不修改、删除或更新旧站，旧网址不自动跳转。`.openai/hosting.json` 仅保留历史 Sites 项目标识，不参与 GitHub Pages 的运行或发布。
+
+自有域名可后续在 GitHub Pages 设置中绑定，并按 GitHub 返回的记录配置 DNS；仅换域名无需增加游戏后端。

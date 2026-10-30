@@ -56,7 +56,7 @@ node scripts/serve.mjs
 
 打开 [本地牌桌](http://localhost:4173)。也可执行 `./start.ps1`；Ctrl+C 停止。本机服务只加载静态文件，不传输游戏状态。不能用 `file://` 双击运行模块与 Worker。
 
-原有公开站点（由其他发布者管理，当前版本尚未更新到该网址）：[三国杀 · 同席](https://sanguosha-tongxi-andy.glass-peacock.chatgpt.site)。朋友也可各自本地运行同一版本，再交换邀请。
+独立托管目标：[GitHub Pages](https://syntheticsamo.github.io/sanguosha-tongxi/)（启用状态见 [部署说明](docs/DEPLOYMENT.md)）。朋友也可各自本地运行同一版本，再交换邀请。
 
 ## 建桌和选将
 
@@ -141,7 +141,7 @@ node --test
 
 ## 发布与信任
 
-GitHub提交与Sites发布是独立步骤。当前仓库没有GitHub Actions自动部署配置；原站点的权限、域名和发布状态见 [部署说明](docs/DEPLOYMENT.md)。
+仓库已配置 GitHub Actions：PR 自动检查；启用 Pages 后，合并到 `main` 且检查通过即自动发布。网站和联机不依赖 GPT 托管。配置及迁移步骤见 [部署说明](docs/DEPLOYMENT.md)，多人开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 将 `dist/` 内全部内容上传任意HTTPS静态托管即可，不需构建或远程游戏后端。`.openai/hosting.json` 只是本次Sites托管元数据，不是运行依赖。
 
