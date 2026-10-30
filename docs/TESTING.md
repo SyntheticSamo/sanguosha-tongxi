@@ -1,10 +1,11 @@
 # 验证记录
 
-## 2026-10-30 · GitHub Pages 迁移准备
+## 2026-10-30 · GitHub Pages 独立发布
 
 - `node scripts/check.mjs`：53个模块与HTML唯一ID通过；`node --test`：205项通过。
 - 使用只在 `/sanguosha-tongxi/` 提供 `dist/` 的本机静态服务，运行 `browser-smoke.mjs` 与 `browser-rules.mjs`，均通过。覆盖相对路径模块和Worker、四上下文真实WebRTC、恢复重连、自动响应、双目标以及390px布局。STUN关闭、ICE为空，不代表跨ISP实测。
-- 已加入PR检查与main发布工作流，发布开关默认为关闭。GitHub API启用私有仓库Pages返回422，明确为当前套餐不支持；线上Pages发布尚未验证，不把本机子路径测试称为公网部署成功。
+- 经用户授权公开仓库后启用Pages，发布开关为 `PAGES_ENABLED=true`；`github-pages` 仅允许main分支。首次[Actions运行](https://github.com/SyntheticSamo/sanguosha-tongxi/actions/runs/41127996663)检查与部署成功，匿名访问仓库及正式网页均返回HTTP 200，Pages强制HTTPS。
+- 在正式网址 `https://syntheticsamo.github.io/sanguosha-tongxi/` 再次运行上述两套浏览器脚本，均通过，覆盖实际模块和Worker加载、四上下文WebRTC、恢复重连、撤销、自动规则、秘密拼点、双目标及390px布局。这是同一电脑访问公网网站的多浏览器测试，尚未进行异地跨ISP、对称NAT或TURN测试。
 
 ## 2026-10-30 · v6 卡牌到位与桌面效果（本机）
 

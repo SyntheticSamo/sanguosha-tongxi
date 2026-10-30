@@ -56,7 +56,7 @@ node scripts/serve.mjs
 
 打开 [本地牌桌](http://localhost:4173)。也可执行 `./start.ps1`；Ctrl+C 停止。本机服务只加载静态文件，不传输游戏状态。不能用 `file://` 双击运行模块与 Worker。
 
-独立托管目标：[GitHub Pages](https://syntheticsamo.github.io/sanguosha-tongxi/)（启用状态见 [部署说明](docs/DEPLOYMENT.md)）。朋友也可各自本地运行同一版本，再交换邀请。
+在线游玩：[三国杀 · 同席](https://syntheticsamo.github.io/sanguosha-tongxi/)。网站由 GitHub Pages 独立托管，朋友无需 GPT 账号。也可各自本地运行同一版本，再交换邀请。
 
 ## 建桌和选将
 

@@ -3,13 +3,15 @@
 ## GitHub Pages
 
 - 仓库：https://github.com/SyntheticSamo/sanguosha-tongxi
-- 目标网址：https://syntheticsamo.github.io/sanguosha-tongxi/
+- 正式网址：https://syntheticsamo.github.io/sanguosha-tongxi/
 - 发布内容：完整 `dist/`，无需构建、安装依赖或 GPT/Sites 服务。
 - 发布配置：[`.github/workflows/site.yml`](../.github/workflows/site.yml)。
 
-当前已准备发布流程，尚未启用 Pages。2026-10-30 实测 GitHub 拒绝为当前私有仓库启用 Pages，原因为账号套餐不支持。免费启用需由仓库所有者确认将源码公开；也可以保留私有并使用支持私有 Pages 的套餐。官方范围见 [GitHub Pages 文档](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。不能把源码推送或本机测试称为线上部署成功。
+2026-10-30 经用户确认，仓库已设为公开，Pages 已启用。`PAGES_ENABLED=true`，`github-pages` 环境仅允许 `main` 分支部署；[首次部署](https://github.com/SyntheticSamo/sanguosha-tongxi/actions/runs/41127996663)的检查与发布均成功，正式网址匿名请求返回 HTTP 200，HTTPS 已强制启用。后续合并到 `main` 会在检查通过后自动更新网站。公开仓库支持 Fork 和 PR，直接写入仍需维护者授权，见 [协作指南](../CONTRIBUTING.md)。
 
-启用方式：
+准备阶段曾因私有仓库套餐限制无法启用 Pages；公开后已解决。官方套餐范围见 [GitHub Pages 文档](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。不能只凭源码推送判断线上部署成功，应核对对应 Actions 运行结果。
+
+重新配置或迁移到其他仓库时：
 
 1. 确保账号套餐和仓库可见性支持 Pages。
 2. 仓库 Settings → Pages → Build and deployment，将 Source 设为 **GitHub Actions**。
