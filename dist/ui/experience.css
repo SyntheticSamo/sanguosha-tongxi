@@ -1,0 +1,97 @@
+/* Shared axis: arena, own role, decisions, controls and hand exclude the pile rail. */
+.game-stage{--rail-left:20px;--rail-right:102px;grid-template-rows:46px minmax(0,1fr) auto}
+#game .hand-panel{grid-row:3;padding-left:var(--rail-left);padding-right:var(--rail-right);min-height:185px;max-height:255px}
+#game .hand-toolbar{justify-content:center;flex-direction:column;gap:2px;width:100%;margin:0;padding:0;min-height:32px}
+#game .hand-toolbar>.selection-copy{flex:0 0 auto;max-width:100%;font-size:10px}
+#game .hand-toolbar>div:last-child{display:flex;justify-content:center;gap:5px;max-width:100%;flex-wrap:wrap}
+#game .hand-toolbar button.small,#game .hand-manual>summary{box-sizing:border-box;min-height:30px;height:30px;min-width:48px;padding:4px 10px;font-size:11px;border:1px solid #758c69;border-radius:5px;font-weight:400;display:inline-flex;align-items:center;justify-content:center;line-height:20px;white-space:nowrap}
+#game .hand-manual>summary{list-style:none;cursor:pointer;color:#e5dfc5;background:#244d3f;gap:4px}
+#game .hand-manual>summary::-webkit-details-marker{display:none}
+#game .hand-manual>summary:before{content:'▸';display:inline-block;font-size:9px;transform:none}
+#game .hand-manual[open]>summary:before{transform:rotate(-90deg)}
+#game .hand-manual .compact-row{bottom:calc(100% + 6px);right:50%;transform:translateX(50%)}
+#game #auto-advance[aria-checked=true]{border-color:#afc38c;box-shadow:inset 0 -3px #afc38c}
+#auto-advance:before{content:'○';font-size:9px;margin-right:4px}#auto-advance[aria-checked=true]:before{content:'●'}
+#game .hand-toolbar button:focus-visible,#game .hand-manual>summary:focus-visible{outline:2px solid #f6d690;outline-offset:3px}
+#game .hand{padding-top:13px;touch-action:none}
+#game .playing-card{touch-action:none}
+.arrival-placeholder{pointer-events:none;visibility:hidden}.arrival-slot{display:block;width:100%;height:100%}
+.sorting-ghost{position:absolute;pointer-events:none;transform:translate(-50%,-65%) rotate(-3deg);width:78px;height:115px;opacity:.95;box-shadow:0 9px 25px #0007}
+.sorting-source{opacity:.2!important}.in-transit{font-size:9px;color:#f0d491;white-space:nowrap}
+#game .seat-general{display:flex;align-items:center;gap:5px}
+.faction-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:19px;height:19px;border:1px solid #b2bf97;border-radius:50%;font:11px var(--serif);letter-spacing:0;color:#d7dcb9;background:#193e32}
+#game .response-panel{position:absolute;grid-row:auto;margin:0;left:50%;top:60%;bottom:auto;right:auto;transform:translateX(-50%);width:min(410px,calc(100vw - 90px));max-width:none;max-height:160px;overflow:auto;z-index:22;border-radius:9px;padding:8px 12px;box-shadow:0 4px 14px #0003}
+#game .response-panel:after{content:'';position:absolute;bottom:-7px;left:calc(50% - 6px);border-top:7px solid #eee4c3;border-left:6px solid transparent;border-right:6px solid transparent}
+#game .response-sub{line-height:1.45;white-space:normal}
+#game .response-buttons{justify-content:center}
+#game .response-panel:has(#decision-option){overflow:auto}
+#game .process-panel{position:relative;inset:auto;width:100%;max-height:300px;margin:12px 0;background:#f7f2e2;color:#294738;overflow:auto}
+#game .process-panel .pool{max-height:220px;overflow:auto;display:flex;flex-wrap:wrap}
+#relation-lines{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;overflow:visible}
+#relation-lines .relation{fill:none;stroke:#d5c592;stroke-width:1.35;stroke-dasharray:5 6;opacity:.28}
+#relation-lines .source.highlighted{opacity:.95;stroke-width:2;animation:relation-flow .8s linear infinite}
+#relation-lines .effect{stroke:#f0c879;opacity:.8;stroke-width:1.8;animation:relation-flow .8s linear infinite}
+#relation-lines .resolving{stroke:#f1d393;opacity:1;stroke-width:2.5}
+#relation-lines .canceled{stroke:#a4ada4;stroke-dasharray:2 11;opacity:.4;animation:none}
+#relation-lines .chain-link{fill:none;stroke:#aaa791;stroke-width:5;stroke-dasharray:7 3;opacity:.7;filter:drop-shadow(0 1px 1px #000);marker-end:none}
+@keyframes relation-flow{to{stroke-dashoffset:-22}}
+.chain-access{position:absolute;inset:0;pointer-events:none;z-index:7}.chain-inspect{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;border:1px solid #b9b38c;border-radius:50%;width:23px;height:23px;min-height:23px;padding:0;font-size:13px;background:#214639;color:#dfd6ae}
+#table-effects{position:absolute;inset:0;pointer-events:none;z-index:9}
+.effect-fan{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:max-content;max-width:90%;text-align:center;color:#ecdfb4;pointer-events:auto}
+.effect-fan>small{display:block;margin:0 0 6px;font-size:11px;letter-spacing:1px}
+.effect-fan-cards{display:flex;justify-content:safe center;gap:7px;padding:5px;max-width:100%;overflow-x:auto;overflow-y:hidden}
+.effect-choice{flex:none;width:66px;height:96px;min-height:0;padding:5px;position:relative;background:#eee3c3;border:3px double #b9ad75;color:#274938;border-radius:5px;box-shadow:0 4px 9px #0003;animation:fan-deal .4s backwards;animation-delay:var(--deal,0ms);text-align:left}
+.effect-choice:disabled{opacity:.9;cursor:default}.effect-choice:not(:disabled):hover,.effect-choice:focus-visible{outline:2px solid #f0d58c;outline-offset:2px;transform:translateY(-3px)}
+.effect-choice .card-meta,.effect-choice .card-category{display:block;font-size:9px}.effect-choice .card-name{writing-mode:vertical-rl;display:block;margin:3px auto;font:20px/1.1 var(--serif);max-height:64px;overflow:hidden}.effect-choice .name-long{font-size:16px}.effect-choice .name-xlong{font-size:13px}
+.card-back{background:repeating-linear-gradient(45deg,#254e3e,#254e3e 4px,#315946 4px,#315946 5px);border:3px double #b8b889;color:#d4d5ab;text-align:center;font-family:var(--serif)}
+.same-window .effect-choice{animation:none}.target-fan{transform:translateX(-50%);top:0;max-width:95%;background:#183d32eb;border:1px solid #a4b2837a;border-radius:8px;padding:5px}
+.revealed-suit{position:absolute;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:#eee3c3;border:3px double #b9ad75;border-radius:6px;color:#274938;padding:8px;font-size:12px}.revealed-suit>span{display:flex;gap:5px}.revealed-suit .card-category{display:none}
+.pindian-backs{position:absolute;left:50%;top:32%;transform:translateX(-50%);display:flex;gap:40px}.pindian-backs i{width:55px;height:76px;padding:15px 0;font-style:normal}
+@keyframes fan-deal{from{opacity:0;transform:translate(55px,-25px) rotate(8deg)}to{opacity:1;transform:none}}
+.has-table-choice .table-center{top:30%!important}.has-table-choice #center-plays{visibility:hidden}.has-table-choice #turn-center,.has-table-choice #target-picker,.has-table-choice #use-zone{display:none!important}
+.card-effect{position:absolute;inset:-12px;display:grid;place-items:center;font:65px var(--serif);color:#efd394;pointer-events:none;z-index:16;animation:card-effect 1.1s both;text-shadow:0 0 15px #e6bb62;white-space:nowrap}
+.effect-fire{color:#f7a26b;text-shadow:0 0 25px #e65527}.effect-thunder,.effect-thunder-delay{color:#c1e2e4;text-shadow:0 0 25px #7aa8d7}.effect-heal{border-radius:50%;border:3px solid #c2d68e;color:#c2d68e}.effect-shield{color:#cbdad7}.effect-arrows{font-size:32px;letter-spacing:12px}.effect-duel,.effect-borrow{font-size:42px}.effect-ripple{border:3px solid #d8c18f;border-radius:50%}.effect-canceled{filter:grayscale(1);opacity:.4}
+@keyframes card-effect{0%{opacity:0;transform:scale(.6)}30%{opacity:1;transform:scale(1.05)}100%{opacity:0;transform:scale(1.35)}}
+.effect-notice{position:absolute;left:calc((100% + var(--rail-left) - var(--rail-right))/2);bottom:calc(var(--hand-height) + 125px);transform:translateX(-50%);background:#ece1bd;color:#284937;padding:6px 12px;font-size:12px;border-radius:8px;z-index:25;pointer-events:none}
+@media(max-height:760px) and (min-width:761px){#game .hand-panel{min-height:165px;max-height:210px}}
+@media(max-width:760px){.game-stage{--rail-left:6px;--rail-right:60px;grid-template-rows:38px minmax(0,1fr) auto}#game .hand-panel{min-height:165px;max-height:230px}#game .hand-heading{padding:0;min-height:24px}#game .hand-toolbar button.small,#game .hand-manual>summary{font-size:10px;padding:3px 7px;height:29px;min-height:29px;min-width:45px}#game .response-panel{width:min(270px,calc(100vw - 80px));max-height:155px;padding:6px 9px}.faction-icon{width:14px;height:14px;font-size:8px}#game .seat-general{gap:3px}.effect-choice{width:48px;height:74px;padding:3px}.effect-choice .card-name{font-size:16px;max-height:48px}.effect-choice .card-meta,.effect-choice .card-category{font-size:7px}.effect-fan-cards{gap:4px}.effect-fan>small{font-size:9px}.effect-fan{max-width:94%}.chain-inspect{width:18px;height:18px;min-height:18px;font-size:10px}.effect-notice{bottom:calc(var(--hand-height) + 100px);font-size:10px}}
+@media(max-height:500px) and (orientation:landscape){.game-stage{--rail-left:12px;--rail-right:58px;grid-template-rows:30px minmax(0,1fr) auto}#game .hand-panel{min-height:112px;max-height:145px}#game .hand-toolbar button.small,#game .hand-manual>summary{font-size:9px;height:23px;min-height:23px;padding:1px 8px;min-width:43px}#game .hand-toolbar{min-height:23px}#game .hand{padding-top:8px}#game .response-panel{width:250px;max-height:88px;padding:4px 8px}#game .response-sub{max-height:none;font-size:8px;overflow:visible}#game .response-buttons{max-width:100%;flex-wrap:wrap}#game .response-buttons>.small{min-height:23px;padding:2px 7px}.faction-icon{width:12px;height:12px;font-size:7px}.effect-choice{width:46px;height:64px;padding:3px}.effect-choice .card-name{font-size:15px;max-height:42px}.effect-choice .card-meta,.effect-choice .card-category{font-size:7px}.effect-fan-cards{gap:5px;padding:3px}.effect-fan>small{font-size:8px;margin-bottom:2px}.has-table-choice .table-center{top:10%!important}.has-response .table-center>#round-label,.has-response .table-center>#room-title,.has-response .table-center>#turn-center,.has-response .table-center>[data-do=phase],.has-response .table-center>#target-picker{display:none!important}.has-response #phase-track{position:fixed;top:0;left:50%;transform:translateX(-50%)}.has-response #center-plays{left:-70px!important;top:-10px!important}.has-table-choice #phase-track{display:none}.effect-fan.market-fan{top:46%}.effect-notice{bottom:calc(var(--hand-height) + 65px)}}
+@media(prefers-reduced-motion:reduce){#relation-lines path,.effect-choice,.card-effect{animation:none!important}.card-effect{display:none}}
+[data-motion=reduce] #relation-lines path,[data-motion=reduce] .effect-choice{animation:none!important}
+[data-motion=reduce] .card-effect{display:none}
+
+.effect-symbol{width:100%;height:100%;max-height:100px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.effect-fire .effect-symbol,.effect-thunder .effect-symbol,.effect-slash .effect-symbol{fill:currentColor;stroke-width:1}
+.effect-origin{font-size:inherit;color:#f1d695;border-bottom:1px dotted #b5bf8b;min-height:20px;padding:0 3px;pointer-events:auto}
+.pile-rail{gap:42px}
+#game .center-plays.duel-row{width:130px}.duel-row .center-card{transform:translateX(calc((var(--layer) - 1)*34px)) rotate(calc((var(--layer) - 1)*4deg))}
+.pindian-result .effect-choice{animation:pindian-flip .4s both}@keyframes pindian-flip{from{transform:rotateY(180deg)}to{transform:rotateY(0)}}
+#game .seat.awaiting-response{border-color:#e6d4a0;box-shadow:0 0 0 2px #e6d4a044}
+@media(max-width:760px){.pile-rail{gap:34px}}
+@media(max-height:500px) and (orientation:landscape){.pile-rail{gap:27px}.effect-origin{min-height:16px}#game .center-plays.duel-row{width:90px}.duel-row .center-card{transform:translateX(calc((var(--layer) - 1)*18px)) rotate(calc((var(--layer) - 1)*4deg))}}
+
+@media(max-width:760px) and (orientation:portrait){#game .has-response .seat{height:76px}#game .has-response .gear-slots{bottom:19px}#game .has-response .seat-hp{margin:2px 0}}
+@media(max-height:500px) and (orientation:landscape){#game .stage-header{position:relative}#game .stage-header #phase-track{display:flex!important;position:absolute;top:4px;left:50%;transform:translateX(-50%);margin:0;z-index:2}#game .stage-header .phase-cell{height:20px;width:20px;font-size:8px}.has-response #center-plays{left:-95px!important}}
+
+#game .hand-toolbar>div>button.small,#game .hand-manual>summary{width:60px;min-width:60px;flex:none}
+#game .seat-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:760px){#game .hand-toolbar>div>button.small,#game .hand-manual>summary{width:51px;min-width:51px}#game .seat-general.hero-long{font-size:11px}}
+@media(max-height:500px) and (orientation:landscape){#game .hand-toolbar>div>button.small,#game .hand-manual>summary{width:51px;min-width:51px}#game .seat-general.hero-long{font-size:12px}}
+
+#game .process-panel:not([open]){display:block}
+
+.compact-turn{display:none}@media(max-height:500px) and (orientation:landscape){.compact-turn{display:block;position:absolute;left:120px;top:6px;font-size:9px;max-width:calc(50% - 185px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c9d2b2}}
+
+.flying-card{overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:2px;padding:5px;font-size:12px}.flying-card .card-meta{font-size:9px;text-align:left;line-height:1}.flying-card .card-name{font:20px/1.05 var(--serif);writing-mode:vertical-rl;align-self:center;max-height:calc(100% - 21px);overflow:hidden;letter-spacing:1px}.flying-card .name-long{font-size:14px}.flying-card .name-xlong{font-size:11px}.flying-card .card-category{font-size:7px;line-height:1;color:#8c8d65}.flight-back{margin:auto;font-size:14px}.flight-total{position:absolute;right:1px;bottom:1px;font-size:10px;background:#173e34;color:#f2dfac;padding:1px 3px}
+
+.material-candidate{position:relative;display:inline-flex;flex:none}.material-info{position:absolute;bottom:4px;right:3px;min-width:20px;min-height:20px;font-size:12px;padding:0;color:#40583a}.material-fan .selected{outline:2px solid #efca74;outline-offset:1px}
+#game .private-skill:has(#hand:not([hidden])){min-height:200px;max-height:270px}#game .private-skill #hand{padding:8px 15px 0;min-height:0}#game .private-skill #hand .card-shell{width:50px;height:70px;flex-basis:50px;margin-left:-11px}#game .private-skill #hand .playing-card{padding:3px;border-width:2px}#game .private-skill #hand .card-name{font-size:17px;max-height:44px}#game .private-skill #hand .card-meta,#game .private-skill #hand .card-category{font-size:7px}
+@media(max-height:500px) and (orientation:landscape){#game .private-skill:has(#hand:not([hidden])){min-height:155px;max-height:180px}#game .private-skill #hand .card-shell{height:52px;width:39px;flex-basis:39px}#game .private-skill #hand .card-name{font-size:13px;max-height:29px}}
+
+@media(max-width:760px) and (orientation:portrait){#game .has-response .seat{height:66px}#game .response-panel{max-height:90px}}
+
+#game .private-skill #peek-cards{padding:13px 15px 0}#game .private-skill #peek-panel p{font-size:9px;line-height:1.2;margin:0;max-height:22px;overflow:auto}#game .private-skill #peek-cards .card-shell{width:50px;height:70px;flex-basis:50px;margin-left:-11px}#game .private-skill #peek-cards .playing-card{padding:3px;border-width:2px}#game .private-skill #peek-cards .card-name{font-size:17px;max-height:44px}#game .private-skill #peek-cards .card-meta,#game .private-skill #peek-cards .card-category{font-size:7px}
+@media(max-height:500px) and (orientation:landscape){#game .private-skill #peek-cards .card-shell{height:52px;width:39px;flex-basis:39px}#game .private-skill #peek-cards .card-name{font-size:13px;max-height:29px}}
+
+@media(max-width:760px) and (orientation:portrait){#game .has-response .seat{min-height:0}}
+
+@media(max-width:760px) and (orientation:portrait){#game .has-response .seat-head{height:9px;line-height:1}#game .has-response .seat-general{font-size:16px;line-height:1.05;margin:1px 0}#game .has-response .seat-general.hero-long{font-size:11px}#game .has-response .seat-hp{margin:2px 0;min-height:6px;max-height:15px;overflow:hidden;gap:2px}#game .has-response .gear-slots{bottom:4px;left:4px;right:2px;gap:2px}#game .has-response .gear-slot{width:12px;height:11px;font-size:7px}#game .has-response .hand-stack{top:3px;bottom:auto;left:18px;right:auto;font-size:7px;max-width:34px;gap:2px;overflow:hidden}#game .has-response .card-backs{width:12px;height:10px}#game .has-response .card-backs i{width:7px;height:9px}}

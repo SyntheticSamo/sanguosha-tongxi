@@ -3,50 +3,40 @@ import { GENERALS,GENERAL_MAP,ROLES,PHASES,GENERAL_PACKS } from '../data/general
 import { distance,attackRange,equipKind } from '../backend/primitives.js';
 import { PeerLink,decodeSignal } from '../sync/rtc.js';
 import { envelope,parseMessage,acceptSnapshot } from '../sync/protocol.js';
+import {skillSupport} from '../data/skill-support.js';
+import { Tabletop } from './tabletop.js';
+import { inspectUse,responseOptions,conversionKinds,discardAdvice } from '../backend/advisor.js';
 
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let view=null,isHost=false,worker=null,links=new Map(),guestLink=null,pending=null,pendingTimer=null,selection={ids:[],zone:'hand',owner:null},libraryMode='generals',actionCallback=null,toastTimer;
-let selectedTargets=[],targetContext=null;
+let selectedTargets=[],targetContext=null,lessonRequested=false;
+const ui=new Tabletop({state:()=>({view,isHost,pending,selection,selectedTargets}),toast,dispatch,act:name=>actions[name]?.(),selectTarget,practiceLesson:()=>{create(true,{quickStart:true,size:2});lessonRequested=true;}});
 const me=()=>view?.players.find(p=>p.id===view.you);
 const target=()=>selectedTargets[0]||view?.you;
-const allowsTwoTargets=()=>selection.zone==='hand'&&selection.owner===view?.you&&selection.ids.some(id=>['tiesuo','jiedao'].includes(CARD_BY_ID[id]?.kind));
+const allowsTwoTargets=()=>ui.twoTargets();
 function selectTarget(id){
   if(!view?.players.some(p=>p.id===id))return;
-  const index=selectedTargets.indexOf(id);
+  if(ui.targetLimit()===0)return;const index=selectedTargets.indexOf(id);
   if(index>=0)selectedTargets.splice(index,1);
-  else if(allowsTwoTargets())selectedTargets=selectedTargets.length<2?[...selectedTargets,id]:[selectedTargets[0],id];
+  else if(ui.targetLimit()>1)selectedTargets=selectedTargets.length<ui.targetLimit()?[...selectedTargets,id]:[...selectedTargets.slice(0,ui.targetLimit()-1),id];
   else selectedTargets=[id];
   renderTargets();
 }
-function renderTargets(){
-  if(!view)return;
-  selectedTargets=selectedTargets.filter(id=>view.players.some(p=>p.id===id)).slice(0,allowsTwoTargets()?2:1);
-  const playing=view.status==='playing';
-  $('target-picker').hidden=!playing;
-  for(const button of document.querySelectorAll('[data-target-seat]')){
-    const index=selectedTargets.indexOf(button.dataset.targetSeat),selected=index>=0;
-    button.disabled=!playing;button.setAttribute('aria-pressed',String(selected));
-    button.closest('.seat').classList.toggle('targeted',selected);
-    const badge=button.querySelector('.target-index');badge.hidden=!selected;badge.textContent=allowsTwoTargets()?String(index+1):'目标';
-  }
-  const names=selectedTargets.map(id=>view.players.find(p=>p.id===id).name);
-  $('target-summary').textContent=names.length?`${allowsTwoTargets()?'目标顺序':'目标'}：${names.join(' → ')}`:allowsTwoTargets()?'依次点击两名玩家选择目标':'点击玩家框选择目标';
-  document.querySelector('[data-do="clear-targets"]').hidden=!names.length;
-}
+function renderTargets(){ui.refresh();}
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5500);}
 function open(id){const d=$(id);if(!d.open)d.showModal();}
 function closeAll(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
 function status(message){$('connection-status').textContent=message;}
-function setBadge(text,ok=false){$('network-badge').innerHTML=`<i style="background:${ok?'#7d9b78':'#b19360'}"></i>${esc(text)}`;}
-function reset(){for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
+function setBadge(text,ok=false){$('scene-network').title=text;$('scene-network').style.color=ok?'#a7c98e':'#d2b478';$('network-badge').innerHTML=`<i style="background:${ok?'#7d9b78':'#b19360'}"></i>${esc(text)}`;}
+function reset(){ui.reset();lessonRequested=false;for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
 function startWorker(){
   worker=new Worker(new URL('../backend/worker.js',import.meta.url),{type:'module'});
   worker.onerror=e=>toast(`本地后端异常：${e.message}`);
   worker.onmessage=e=>{
     const m=e.data;
-    if(m.kind==='view'){
-      if(m.route==='host'){view=m.view;render();}
+    if(m.kind==='created'){ui.scene.openingRequested=true;}else if(m.kind==='view'){
+      if(m.route==='host'){view=m.view;if(lessonRequested&&view.practice){ui.coach=0;lessonRequested=false;}render();}
       else sendRemote(m.route,envelope('snapshot',{view:m.view}));
     }else if(m.kind==='ack'){
       if(m.route==='host')ack(m.id);else sendRemote(m.route,envelope('ack',{id:m.id,rev:m.rev}));
@@ -61,11 +51,11 @@ function startWorker(){
   };
 }
 function sendRemote(id,data){const link=links.get(id);if(link?.channel?.readyState==='open'){try{link.send(data);}catch(e){toast(e.message);}}}
-function ack(id){if(pending&&(!id||id===pending.id)){pending=null;clearTimeout(pendingTimer);}}
+function ack(id){if(pending&&(!id||id===pending.id)){pending=null;clearTimeout(pendingTimer);ui.refresh();}}
 function dispatch(type,data={}){
   if(!view)throw new Error('请先创建或加入牌桌');
   if(pending)throw new Error('上一操作正在等待确认，请稍候');
-  const action={type,...data,id:crypto.randomUUID(),rev:view.rev};pending=action;
+  const action={type,...data,id:crypto.randomUUID(),rev:view.rev};pending=action;ui.refresh();
   pendingTimer=setTimeout(()=>{if(pending?.id===action.id){pending=null;toast('操作未收到确认，请重新同步后核对结果。不会自动重复执行。');sync();}},10000);
   if(isHost)worker.postMessage({kind:'action',action});
   else {try{guestLink.send(envelope('action',{action}));}catch(error){ack(action.id);throw error;}}
@@ -73,7 +63,7 @@ function dispatch(type,data={}){
 function sync(){if(isHost)worker?.postMessage({kind:'sync'});else if(guestLink?.channel?.readyState==='open')guestLink.send(envelope('sync'));else toast('连接未建立，请重新交换连接信息。');}
 function hostOnly(kind,extra={}){if(!isHost||!worker)throw new Error('此操作需要房主设备');worker.postMessage({kind,...extra});}
 function create(practice=false,config={}){
-  reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'create',config:{hostId:crypto.randomUUID(),token:crypto.randomUUID(),name:config.name||'演练玩家',size:Number(config.size||4),ex:config.ex??true,practice,mode:config.mode||'auto',deckSet:config.deckSet||'army',selectionMode:config.selectionMode||'random',generalPacks:config.generalPacks||Object.keys(GENERAL_PACKS)}});setBadge(practice?'本地演练':'房主 · 等待连接',true);
+  reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'create',config:{hostId:crypto.randomUUID(),token:crypto.randomUUID(),name:config.name||'演练玩家',size:Number(config.size||4),ex:config.ex??true,practice,mode:config.mode||'auto',deckSet:config.deckSet||'army',selectionMode:config.selectionMode||'random',quickStart:!!config.quickStart,skillAutomation:config.skillAutomation??true,completeSkills:true,interactionMode:'tactile',equipmentAutomation:true,tableExperience:true,generalPacks:config.generalPacks||Object.keys(GENERAL_PACKS)}});setBadge(practice?'本地演练':'房主 · 等待连接',true);
 }
 function iceServers(){
   let servers=[];if($('use-stun').checked)servers.push({urls:'stun:stun.l.google.com:19302'});
@@ -86,7 +76,7 @@ function rtcStatus(state,link,error){
   if(!isHost&&guestLink&&link!==guestLink)return;
   link.status=state;renderPeers();
   if(state==='open'){
-    status('直连已建立，牌桌状态正在同步。');
+    status('直连已建立，牌桌状态正在同步。');ui.connectionStep(3);ui.baseline();
     if(isHost)setBadge(`房主 · ${[...links.values()].filter(l=>l.channel?.readyState==='open').length} 个连接`,true);
     else {
       let token=sessionStorage.getItem('tongxi-seat:'+link.roomId);if(!token){token=crypto.randomUUID();sessionStorage.setItem('tongxi-seat:'+link.roomId,token);}
@@ -94,7 +84,7 @@ function rtcStatus(state,link,error){
     }
   }
   if(['disconnected','failed','closed','protocol-error'].includes(state)){
-    status(error||'有连接断开。受限网络可尝试 TURN；重连需重新交换邀请与回应。');
+    ui.baseline();status(error||'有连接断开。受限网络可尝试 TURN；重连需重新交换邀请与回应。');
     if(!isHost){setBadge('连接中断');ack();}else setBadge('房主 · 请查看连接状态');
   }
 }
@@ -129,7 +119,7 @@ async function offer(){
   for(const [id,l]of links)if(['failed','closed'].includes(l.pc.connectionState)){l.close();links.delete(id);}
   if(links.size>=16)throw new Error('待连接邀请过多，请刷新并恢复牌桌后重试');
   const link=new PeerLink({roomId:view.roomId,iceServers:iceServers(),onMessage:incoming,onStatus:rtcStatus});links.set(link.id,link);
-  try{$('offer-output').value=await link.offer();status('邀请已生成。发给一位好友，再粘贴其回应。下一位好友请生成新的邀请。');}catch(e){link.close();links.delete(link.id);throw e;}
+  try{$('offer-output').value=await link.offer();ui.connectionStep(1);status('邀请已生成。发给一位好友，再粘贴其回应。下一位好友请生成新的邀请。');}catch(e){link.close();links.delete(link.id);throw e;}
 }
 async function answer(){
   $('answer-output').value='';
@@ -137,81 +127,38 @@ async function answer(){
   if(isHost&&view)throw new Error('当前设备正在主持牌桌，请用另一个标签页或浏览器加入');
   guestLink?.close();view=null;isHost=false;$('answer-output').value='';status('正在生成回应，请稍候…');
   guestLink=new PeerLink({roomId:signal.roomId,linkId:signal.linkId,iceServers:iceServers(),onMessage:incoming,onStatus:rtcStatus});
-  try{$('answer-output').value=await guestLink.answer(signal);status('回应已生成。将回应发回房主，等待房主接收。');}catch(error){guestLink.close();throw error;}
+  try{$('answer-output').value=await guestLink.answer(signal);ui.connectionStep(2);status('回应已生成。将回应发回房主，等待房主接收。');}catch(error){guestLink.close();throw error;}
 }
 async function accept(){const signal=await decodeSignal($('answer-input').value);const link=links.get(signal.linkId);if(!isHost||!link)throw new Error('没有对应的邀请，请确认此回应来自本次受邀好友');await link.accept(signal);status('已接收回应，正在建立直连…');}
 function selectCard(id,zone,owner){
-  if(selection.zone!==zone||selection.owner!==owner)selection={ids:[],zone,owner};
-  const i=selection.ids.indexOf(id);if(i>=0)selection.ids.splice(i,1);else selection.ids.push(id);renderCards();
+  if(ui.multi&&selection.owner===owner&&['hand','wood','material'].includes(selection.zone)&&['hand','wood'].includes(zone)){selection.zone='material';}else if(selection.zone!==zone||selection.owner!==owner)selection={ids:[],zone,owner};
+  const i=selection.ids.indexOf(id),multi=ui.multi||zone==='peek'||view?.mode==='auto'&&view.phase===4&&view.turn===view.you;
+  if(i>=0)selection.ids.splice(i,1);else if(multi)selection.ids.push(id);else selection.ids=[id];renderCards();
 }
 function picked(zone){if(selection.zone!==zone||!selection.ids.length)throw new Error('请先在对应牌区选择卡牌');return [...selection.ids];}
-function cardHTML(id,zone,owner=null,staticOnly=false){
-  const c=CARD_BY_ID[id];if(!c)return '';const def=CARD_MAP[c.kind];const index=selection.zone===zone&&selection.owner===owner?selection.ids.indexOf(id):-1;
-  return `<button type="button" class="playing-card ${red(c)?'red-card':''} ${index>=0?'selected':''}" ${staticOnly?'':`data-card="${id}" data-zone="${zone}" data-owner="${esc(owner||'')}"`} aria-label="${esc(cardLabel(id))}：${esc(def.rule)}" aria-pressed="${index>=0}" title="${esc(def.rule)}"><span class="card-meta">${SUITS[c.suit]} ${rankText(c.rank)}</span><span class="card-name ${def.name.length>=5?'name-xlong':def.name.length>=4?'name-long':''}">${def.name}</span><span class="card-category">${def.type}${c.ex?' · EX':''}</span>${index>=0?`<span class="order-label">${index+1}</span>`:''}</button>`;
-}
-function miniHTML(id,zone,owner){const selected=selection.zone===zone&&selection.owner===owner&&selection.ids.includes(id);return `<button class="mini-card ${selected?'selected':''}" data-card="${id}" data-zone="${zone}" data-owner="${esc(owner)}" title="${esc(CARD_MAP[CARD_BY_ID[id].kind].rule)}">${esc(cardLabel(id))} <span class="zone-tag">${zone==='equip'?'装备':'判定'}</span></button>`;}
+function cardHTML(id,zone,owner=null,staticOnly=false){return ui.card(id,zone,owner,staticOnly);}
 function render(){
-  if(!view)return;
-  $('welcome').hidden=true;$('game').hidden=false;
-  const lobby=view.status==='lobby', mine=me(), g=GENERAL_MAP[mine.general];
-  $('room-title').textContent=view.status==='finished'?`${view.winner} · 结束`:lobby?'等待开局':`${view.players.find(p=>p.id===view.turn)?.name} · ${PHASES[view.phase]}`;
-  $('revision').textContent=`SYNC / ${view.rev}`;$('room-size').textContent=`${view.players.length} / ${view.size}`;
-  $('room-info').innerHTML=`<div class="room-code">${esc(view.roomId.slice(0,8).toUpperCase())}</div><div class="room-tags"><span>${view.mode==='auto'?'基础自动':'自由手动'}</span><span>${{random:'随机',choose:'点将',five:'五选一'}[view.selectionMode]}</span><span>${DECK_SETS[view.deckSet]}</span></div>${view.practice?`<label>控制席位<select id="control-seat">${view.players.map(p=>`<option value="${esc(p.id)}" ${p.id===view.you?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}`;
-  $('lobby-actions').innerHTML=lobby?`${isHost?'<button class="primary small full" data-do="start">开局</button>':''}${view.selectionMode!=='random'?'<button class="secondary small full" data-do="library">选将</button>':'<p class="muted">开局时随机分配武将</p>'}${view.practice&&isHost?'<button class="text-link" data-do="local-seat">增加席位</button>':''}`:'';
-  $('turn-info').innerHTML=lobby?'':`<div class="turn-box"><small>第 ${view.round} 轮</small><div class="phase-dots">${PHASES.map((p,i)=>`<span class="${i===view.phase?'active':''}">${p}</span>`).join('')}</div></div>`;
-  $('table-actions').hidden=view.status!=='playing';
-  const context=`${view.roomId}:${view.you}`;
-  if(targetContext!==context){selectedTargets=[];targetContext=context;}
-  $('range-info').textContent=`攻击范围 ${attackRange(mine)}${view.mode==='auto'?` · 出杀 ${view.counters.slash}${view.counters.drank?' · 酒 +1':''}`:''}`;
-  const result=view.lastResult;
-  $('last-result').textContent=result?.kind==='pindian'?`拼点：${view.players.find(p=>p.id===result.source)?.name}${result.winner?'胜':'未赢'}`:result?.kind==='judge'?`判定：${cardLabel(result.card)}`:'';
-  $('round-label').textContent=lobby?'待开局':`第 ${view.round} 轮 · ${PHASES[view.phase]}`;
-  $('pile-count').textContent=`牌堆 ${view.deckCount} / 弃牌 ${view.discard.length}`;
-  $('seats').innerHTML=view.players.map((p,i)=>{
-    const general=GENERAL_MAP[p.general];
-    return `<article class="seat ${p.id===view.turn&&!lobby?'current':''} ${p.id===view.you?'mine':''} ${p.dead?'dead':''}" data-seat="${esc(p.id)}"><button type="button" class="seat-target" data-target-seat="${esc(p.id)}" aria-label="选择目标：${esc(p.name)}${general?'，'+esc(general.name):''}" aria-pressed="false"><span class="target-index" hidden></span></button><div class="seat-head"><span>${i+1} / ${general?.faction||'待选'}</span><span>${p.role?ROLES[p.role]+(!p.roleOpen&&view.status!=='finished'?' · 私密':''):'身份未知'}</span></div><div class="seat-general">${general?.name||'待选将'}</div><div class="seat-name">${esc(p.name)}${p.id===view.you?' · 你':''}</div><div class="seat-hp">${p.hp}/${p.maxHp}${p.hp<=0&&!p.dead?' 濒死':''}${p.chained?' · 铁索':''}</div><div class="seat-info"><span>手牌 ${p.handCount}</span>${p.id!==view.you&&!p.dead?`<span class="seat-distance">距${distance(view,view.you,p.id)}</span>`:''}<span>${p.dead?'阵亡':p.id===view.turn&&!lobby?'回合中':''}</span></div><div class="mini-zones">${p.equip.map(id=>miniHTML(id,'equip',p.id)).join('')}${p.judge.map(id=>miniHTML(id,'judge',p.id)).join('')}</div>${lobby&&p.id===view.you&&view.selectionMode!=='random'?'<button class="text-link" data-do="library">选将</button>':''}${lobby&&isHost&&p.id!==view.hostId?`<button class="text-link" data-remove="${esc(p.id)}">移除</button>`:''}</article>`;
-  }).join('')+Array.from({length:Math.max(0,view.size-view.players.length)},(_,i)=>`<div class="seat empty-seat">${view.players.length+i+1} · 空席</div>`).join('');
-  $('my-title').textContent=g?`${g.name} · ${mine.name}`:'手牌';
-  $('my-role').textContent=mine.role?`${ROLES[mine.role]}${mine.roleOpen?' · 公开':' · 私密'}`:'';
-  $('my-skills').innerHTML=g?g.skills.map(s=>`<button class="skill-button" data-skill="${esc(s.name)}" title="${esc(s.text)}">${esc(s.name)}</button>`).join(''):'';
-  const logs=$('logs'),stick=logs.scrollTop+logs.clientHeight>=logs.scrollHeight-50;
-  logs.innerHTML=view.logs.map(l=>`<div class="log-line"><span>#${l.rev}</span>${esc(l.text)}</div>`).join('');if(stick)logs.scrollTop=logs.scrollHeight;
-  if(view.mode==='manual')$('manual-controls').open=true;
-  renderCards();renderPending();if($('library-dialog').open)renderLibrary();
+ if(!view)return;const context=view.roomId+':'+view.you;if(targetContext!==context){selectedTargets=[];selection={ids:[],zone:'hand',owner:view.you};targetContext=context;}
+ ui.render();if($('library-dialog').open)renderLibrary();
 }
-function renderCards(){
-  if(!view)return;const mine=me();const own=selection.owner===view.you;const source=selection.zone==='hand'?mine.hand:selection.zone==='pool'?view.pool:selection.zone==='peek'?view.peek:view.players.find(p=>p.id===selection.owner)?.[selection.zone];
-  const discardPhase=view.mode==='auto'&&view.phase===4&&view.turn===view.you;
-  document.querySelector('[data-do="phase-discard"]').hidden=!discardPhase;
-  document.querySelector('[data-do="play"]').hidden=discardPhase||!!view.pending;
-  selection.ids=selection.ids.filter(id=>source?.includes(id));
-  $('hand').innerHTML=mine.hand?.length?mine.hand.map(id=>cardHTML(id,'hand',view.you)).join(''):'<span class="muted">'+(view.status==='lobby'?'开局后获得四张起始手牌':'暂无手牌')+'</span>';
-  $('pool').innerHTML=view.pool.length?view.pool.map(id=>cardHTML(id,'pool')).join(''):'<span class="empty-message">暂无牌</span>';
-  $('own-equip').innerHTML=mine.equip.length||mine.judge.length?`<span class="muted">我的公开牌区：</span>${mine.equip.map(id=>miniHTML(id,'equip',view.you)).join('')}${mine.judge.map(id=>miniHTML(id,'judge',view.you)).join('')}`:'';
-  $('peek-panel').hidden=!view.peek.length;$('peek-cards').innerHTML=view.peek.map(id=>cardHTML(id,'peek',view.you)).join('');
-  $('selection-label').textContent=selection.ids.length?`已选 ${selection.ids.length} 张 · ${selection.ids.map(cardName).join('、')}`:'点击手牌，再选择操作';
-  const publicZone=selection.ids.length&&(selection.zone==='pool'||(['equip','judge'].includes(selection.zone)&&!own));
-  $('public-actions').hidden=!publicZone;$('public-label').textContent=`已选 ${selection.ids.length} 张公开牌`;
-  document.querySelector('[data-do="take-pool"]').hidden=selection.zone!=='pool';
-  for(const key of ['public-take','public-discard','public-pool','public-pass'])document.querySelector(`[data-do="${key}"]`).hidden=selection.zone==='pool';
-  renderTargets();
-  document.querySelectorAll('.seat [data-card]').forEach(b=>b.classList.toggle('selected',selection.zone===b.dataset.zone&&selection.owner===b.dataset.owner&&selection.ids.includes(b.dataset.card)));
-}
+function renderCards(){ui.refresh();}
 function renderLibrary(){
   const q=$('library-search').value.trim().toLowerCase(),pack=$('library-pack').value;
   document.querySelectorAll('[data-library]').forEach(b=>b.classList.toggle('active',b.dataset.library===libraryMode));
   $('library-pack').hidden=libraryMode!=='generals';
+  $('library-content').classList.remove('hero-deal','deal-playing');if($('skip-deal'))$('skip-deal').hidden=true;
   if(libraryMode==='generals'){
     const list=GENERALS.filter(g=>(!pack||g.pack===pack)&&`${g.name}${g.faction}${g.skills.map(s=>s.name+s.text).join('')}`.includes(q));
     $('library-content').innerHTML=list.map(g=>{
       const chosen=view?.players.find(p=>p.general===g.id);
       const can=view?.status==='lobby'&&view.selectionMode!=='random'&&view.generalPacks.includes(g.pack)&&(!chosen||chosen.id===view.you)&&(view.selectionMode!=='five'||view.choices.includes(g.id));
-      return `<article class="library-entry ${view?.choices.includes(g.id)?'candidate':''}"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.faction} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3><details><summary>技能 / 版本</summary>${g.skills.map(s=>`<p><b>${esc(s.name)}</b> · ${esc(s.text)}</p>`).join('')}<p class="muted">${esc(g.edition||'标准身份版')}${g.sourceNote?' · '+esc(g.sourceNote):''}</p><a class="text-link" href="${esc(g.source)}" target="_blank" rel="noreferrer">来源 ↗</a></details>${can?`<button class="secondary small full" data-general="${esc(g.id)}">${chosen?'已选':'选此武将'}</button>`:chosen?`<p class="muted">${esc(chosen.name)} 已选</p>`:''}</article>`;
+      return `<article class="library-entry ${view?.choices.includes(g.id)?'candidate':''}"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.faction} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3><details><summary>技能 / 版本</summary>${g.skills.map(s=>`<p><b>${esc(s.name)}</b> <small>${skillSupport(g,s,view?.completeSkills??true).status}</small> · ${esc(s.text)}</p>`).join('')}<p class="muted">${esc(g.edition||'标准身份版')}${g.sourceNote?' · '+esc(g.sourceNote):''}</p><a class="text-link" href="${esc(g.source)}" target="_blank" rel="noreferrer">来源 ↗</a></details>${can?`<button class="secondary small full" data-general="${esc(g.id)}">${chosen?'已选':'选此武将'}</button>`:chosen?`<p class="muted">${esc(chosen.name)} 已选</p>`:''}</article>`;
     }).join('');
     if(view?.status==='lobby'&&view.selectionMode==='five'){
       const candidates=view.choices.map(id=>GENERAL_MAP[id]);
       const candidateIds=new Set(candidates.map(g=>g.id));
-      $('library-content').innerHTML=candidates.map(g=>`<article class="library-entry candidate"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3>${g.skills.map(k=>`<p><b>${esc(k.name)}</b> · ${esc(k.text)}</p>`).join('')}<button class="primary small full" data-general="${esc(g.id)}">选择</button></article>`).join('');
+      $('library-content').innerHTML=candidates.map(g=>`<article class="library-entry candidate"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3>${g.skills.map(k=>`<p><b>${esc(k.name)}</b> <small>${skillSupport(g,k,view?.completeSkills??true).status}</small> · ${esc(k.text)}</p>`).join('')}<button class="primary small full" data-general="${esc(g.id)}">选择</button></article>`).join('');
+      ui.scene.deal(candidates);
     }
   }else $('library-content').innerHTML=CARD_TYPES.filter(c=>`${c.name}${c.type}${c.rule}`.includes(q)).map(c=>{
     const copies=DECK.filter(d=>d.kind===c.id);
@@ -219,44 +166,24 @@ function renderLibrary(){
   }).join('');
   if(!$('library-content').children.length)$('library-content').innerHTML='<p class="muted">无匹配内容</p>';
 }
-function renderPending(){
-  const panel=$('response-panel'),q=view.pending;
-  panel.hidden=!q;if(!q)return;
-  const player=id=>view.players.find(p=>p.id===id)?.name||'玩家',mine=q.player===view.you;
-  const labels={slash:'请出闪',duel:'决斗 · 请出杀',aoe:q.required==='sha'?'南蛮 · 请出杀':'万箭 · 请出闪',save:`${player(q.target)} 濒死 · 求桃`,counter:'无懈窗口',judge:'判定',pindian:'拼点 · 各选一张',chooseCard:'选择目标牌',market:'五谷丰登 · 选一张',fireShow:'火攻 · 展示手牌',firePay:'火攻 · 弃同花色手牌',borrow:'借刀 · 对指定目标出杀'};
-  let buttons='';
-  if(q.kind==='counter'){
-    const can=q.players.includes(view.you);if(can)buttons+=`<button class="secondary small" data-do="respond">无懈</button>${!q.passed.includes(view.you)?'<button class="primary small" data-do="pass">放弃</button>':'<span>已放弃，等待其他玩家</span>'}`;
-  }else if(q.kind==='pindian'){
-    if(q.players.includes(view.you)&&!q.selected.includes(view.you))buttons='<button class="primary small" data-do="respond">确认拼点牌</button>';else buttons='<span>等待另一方选牌</span>';
-  }else if(q.kind==='judge'){
-    if(mine||isHost)buttons+='<button class="primary small" data-do="pass">判定生效</button>';
-    if(isHost||me().general&&GENERAL_MAP[me().general].skills.some(k=>['鬼才','鬼道'].includes(k.name)))buttons+='<button class="secondary small" data-do="rejudge">以所选牌改判</button>';
-  }else if(mine){
-    if(q.kind==='chooseCard')buttons='<button class="primary small" data-do="effect-hand">随机手牌</button><button class="secondary small" data-do="effect-card">所选公开牌</button>';
-    else if(q.kind==='market')buttons='<button class="primary small" data-do="effect-market">获得所选</button>';
-    else buttons=`<button class="primary small" data-do="respond">${q.kind==='fireShow'?'展示':'响应'}</button>${q.kind==='fireShow'?'':'<button class="secondary small" data-do="pass">放弃</button>'}${q.required==='shan'&&!q.ignoreArmor&&equipKind(me(),'armor')==='bagua'?'<button class="secondary small" data-do="bagua">八卦阵</button>':''}`;
-  }
-  panel.innerHTML=`<div><strong>${esc(labels[q.kind]||q.kind)}</strong><span class="muted">${q.player?esc(player(q.player)):''}${q.kind==='counter'?esc((CARD_MAP[q.effect.cardKind]?.name||'锦囊')+' → '+player(q.effect.target)):''}${q.remaining>1?' · 还需'+q.remaining+'张':''}${q.kind==='judge'?' · '+esc(cardLabel(q.card)):''}${q.kind==='firePay'?' · '+SUITS[q.suit]:''}</span></div><div class="response-buttons">${buttons||'<span>等待响应</span>'}</div>`;
-}
 function actionDialog(title,description,callback,{label='结算说明（可选）',required=false}={}){
   $('action-title').textContent=title;$('action-description').textContent=description;$('action-label').firstChild.textContent=label;$('action-text').value='';$('action-text').required=required;actionCallback=callback;open('action-dialog');
 }
 const actions={
   'clear-targets':()=>{selectedTargets=[];renderTargets();},
   judge:()=>dispatch('judge'),pindian:()=>dispatch('pindian',{target:target()}),
-  recast:()=>dispatch('recast',{cards:picked('hand')}),
+  recast:()=>dispatch('recast',{cards:picked('hand'),as:ui.conversion||undefined}),
   'phase-discard':()=>dispatch('discard',{cards:picked('hand')}),
-  respond:()=>{const cards=selectedOwned();const q=view.pending,c=CARD_BY_ID[cards[0]],desired=q?.kind==='save'?'tao':q?.required;const as=desired&&c.kind!==desired&&!(desired==='sha'&&['sha','fire_sha','thunder_sha'].includes(c.kind))&&!(q?.kind==='save'&&c.kind==='jiu')?desired:undefined;dispatch('respond',{cards,as});},
+  respond:()=>{const cards=selectedOwned(),options=responseOptions(view,cards),choice=options.find(o=>o.ok&&o.as===ui.conversion)||options.find(o=>o.ok);if(!choice)throw new Error(options[0]?.reason||'请选择合法响应牌');dispatch('respond',{cards,as:choice.as||undefined});},
   pass:()=>dispatch('pass'),bagua:()=>dispatch('bagua'),rejudge:()=>dispatch('rejudge',{cards:selectedOwned()}),
-  'effect-hand':()=>dispatch('pickEffect',{zone:'hand'}),
-  'effect-card':()=>dispatch('pickEffect',{zone:selection.zone,card:selection.ids[0]}),
-  'effect-market':()=>dispatch('pickEffect',{card:picked('pool')[0]}),
+  'effect-hand':()=>dispatch('pickEffect',{windowId:view.pending?.windowId,zone:'hand'}),
+  'effect-card':()=>dispatch('pickEffect',{windowId:view.pending?.windowId,zone:selection.zone,card:selection.ids[0]}),
+  'effect-market':()=>dispatch('pickEffect',{windowId:view.pending?.windowId,card:picked('pool')[0]}),
   correct:()=>{hostOnlyCheck();dispatch('correct',{op:$('correction-op').value,target:target(),value:Number($('correction-value').value),reason:$('correction-reason').value});},
   create:()=>open('create-dialog'),
-  join:()=>{open('connect-dialog');$('offer-input').focus();},
-  connect:()=>open('connect-dialog'),
-  practice:()=>create(true),
+  join:()=>{ui.connectRole('guest');open('connect-dialog');$('offer-input').focus();},
+  connect:()=>{ui.connectRole(isHost?'host':'guest');open('connect-dialog');},
+  practice:()=>create(true,{quickStart:true}),tutorial:()=>{closeAll();document.querySelector('#tutorial-dialog [data-ui=tutorial-start]').textContent=view?'在当前牌桌显示提示':'进入教学演练';open('tutorial-dialog');},
   library:()=>{if(view?.status==='lobby'&&view.selectionMode!=='random')libraryMode='generals';renderLibrary();open('library-dialog');},rules:()=>open('rules-dialog'),tools:()=>open('tools-dialog'),
   offer,answer,accept,sync,
   'copy-offer':()=>copy($('offer-output')),'copy-answer':()=>copy($('answer-output')),
@@ -265,29 +192,30 @@ const actions={
   peek:()=>actionDialog('私看牌顶','输入观看数量（1–5）。这是私密区域，其余玩家只看到观看张数。',n=>dispatch('peek',{n:Number(n)}),{label:'观看张数',required:true}),
   phase:()=>dispatch('phase'),'next-turn':()=>dispatch('phase',{nextTurn:true}),
   'hp-minus':()=>dispatch('hp',{target:target(),delta:-1}),'hp-plus':()=>dispatch('hp',{target:target(),delta:1}),
-  play:()=>{const cards=picked('hand');dispatch(view.mode==='auto'?'use':'play',{cards,target:target(),targets:selectedTargets.length?[...selectedTargets]:[view.you]});},
+  play:()=>{if(ui.armedSkill){const skill=ui.armedSkill;ui.armedSkill=null;ui.multi=false;dispatch('activateSkill',{skill,cards:selection.owner===view.you?[...selection.ids]:[],targets:[...selectedTargets],value:ui.skillValue,option:ui.skillOption});return;}const cards=selectedOwned();if(view.mode==='manual'){dispatch('play',{cards,target:target(),as:ui.conversion?CARD_MAP[ui.conversion].name:undefined});return;}const advice=inspectUse(view,cards,ui.conversion,selectedTargets);if(!advice.ok)throw new Error(advice.reason);dispatch('use',advice.action);},
   'manual-play':()=>dispatch('play',{cards:picked('hand'),target:target()}),
-  'play-as':()=>{const cards=selectedOwned(),seat=target();actionDialog('转化','输入杀、火杀、闪、桃、过河拆桥或乐不思蜀。基础转化自动校验；其他技能请手动打出。',name=>{const kind=CARD_TYPES.find(c=>c.name===name)?.id;if(view.mode==='auto'){if(!kind)throw new Error('请输入牌名');dispatch(view.pending?'respond':'use',{cards,target:seat,as:kind});}else dispatch('play',{cards,target:seat,as:name});},{label:'牌名',required:true});},
+  'play-as':()=>{$('skill-title').textContent='选择基础转化';$('skill-edition').textContent='技能与武器提供的基础转化';$('skill-text').textContent='选择结果，再选择材料牌。仅列出当前武将或装备具备的转化；自动与人工分支以技能面板标记为准。';$('skill-scope').textContent='系统校验材料与时机，不需要输入牌名。';$('skill-options').innerHTML=conversionKinds(view).map(kind=>'<button class="primary small" data-ui="convert" data-kind="'+kind+'">转化为'+CARD_MAP[kind].name+'</button>').join(' ')||'<p>当前没有已支持的基础转化；复杂效果请使用手动打出。</p>';$('skill-guide').hidden=true;open('skill-dialog');},
   discard:()=>{if(selection.owner!==view?.you||!['hand','equip','judge'].includes(selection.zone)||!selection.ids.length)throw new Error('请选择自己的手牌、装备或判定牌');dispatch('discard',{cards:[...selection.ids]});},
   give:()=>dispatch('give',{cards:picked('hand'),target:target()}),equip:()=>dispatch('equip',{cards:picked('hand')}),
   delay:()=>{const cards=picked('hand'),seat=target();if(cards.length===1&&CARD_MAP[CARD_BY_ID[cards[0]].kind].type!=='延时')actionDialog('国色：置为乐不思蜀','由同桌确认方块转化合法性；实体牌不改变牌面，转化含义记录在日志中。',()=>dispatch('delay',{cards,target:seat,as:'乐不思蜀'}));else dispatch('delay',{cards,target:seat});},
   'take-pool':()=>dispatch('takePool',{cards:picked('pool')}),'clear-pool':()=>dispatch('clearPool'),
   'random-take':()=>dispatch('randomTake',{target:target()}),'random-discard':()=>dispatch('randomTake',{target:target(),discard:true}),
   'public-take':()=>publicMove('hand'),'public-discard':()=>publicMove('discard'),'public-pool':()=>publicMove('pool'),'public-pass':()=>publicMove('judge'),
-  'peek-top':()=>dispatch('returnPeek',{cards:picked('peek'),to:'top'}),'peek-bottom':()=>dispatch('returnPeek',{cards:picked('peek'),to:'bottom'}),
-  'peek-hand':()=>dispatch('returnPeek',{cards:picked('peek'),to:'hand'}),'peek-pool':()=>dispatch('returnPeek',{cards:picked('peek'),to:'pool'}),
+  'peek-top':()=>view.pending?.kind==='skill'?dispatch('skillResolve',{choice:'top',cards:picked('peek'),targets:[]}):dispatch('returnPeek',{cards:picked('peek'),to:'top'}),'peek-bottom':()=>view.pending?.kind==='skill'?dispatch('skillResolve',{choice:'bottom',cards:picked('peek'),targets:[]}):dispatch('returnPeek',{cards:picked('peek'),to:'bottom'}),
+  'peek-hand':()=>view.pending?.kind==='skill'?dispatch('skillResolve',{choice:'keep',cards:[],targets:[]}):dispatch('returnPeek',{cards:picked('peek'),to:'hand'}),'peek-pool':()=>dispatch('returnPeek',{cards:picked('peek'),to:'pool'}),
   'discard-pile':()=>{$('pile-content').innerHTML=view?.discard.map(id=>cardHTML(id,'discard',null,true)).join('')||'<p class="muted">弃牌堆为空。</p>';open('pile-dialog');},
   undo:()=>hostOnly('undo'),export:()=>hostOnly('export'),'reveal-role':()=>dispatch('role'),
   death:()=>{if(!isHost)throw new Error('仅房主可确认阵亡');dispatch('death',{target:target()});},
   finish:()=>{if(!isHost)throw new Error('仅房主可结束对局');dispatch('finish',{winner:$('winner').value});closeAll();},
   restore:()=>{reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'restore'});setBadge('房主 · 本地恢复',true);}
 };
-function hostOnlyCheck(){if(!isHost)throw new Error('仅房主可纠正');}
-function selectedOwned(){if(selection.owner!==view.you||!['hand','equip'].includes(selection.zone)||!selection.ids.length)throw new Error('请选择自己的牌');return [...selection.ids];}
+function hostOnlyCheck(){if(!isHost)throw new Error('仅房主可纠正');if(view?.you!==view?.hostId)throw new Error('请先切换到房主席位，再执行房主纠正');}
+function selectedOwned(){if(selection.owner!==view.you||!['hand','equip','wood','material'].includes(selection.zone)||!selection.ids.length)throw new Error('请选择自己的牌');return [...selection.ids];}
 function publicMove(to){if(!['equip','judge'].includes(selection.zone)||!selection.ids.length)throw new Error('请选择一位玩家的公开区域卡牌');dispatch('publicMove',{cards:[...selection.ids],zone:selection.zone,target:selection.owner,to,destination:target()});}
 async function copy(input){if(!input.value)throw new Error('请先生成连接信息');try{await navigator.clipboard.writeText(input.value);toast('已复制连接信息。');}catch{input.focus();input.select();toast('请按 Ctrl+C 复制选中的连接信息。');}}
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b)return;
+  if(ui.ignoreClick(e)){e.preventDefault();return;}
   if(b.hasAttribute('data-close')){b.closest('dialog').close();return;}
   const d=b.dataset;
   if('targetSeat'in d){e.preventDefault();selectTarget(d.targetSeat);return;}
@@ -298,11 +226,12 @@ document.addEventListener('click',async e=>{
     else if(d.library){libraryMode=d.library;renderLibrary();}
     else if(d.general){dispatch('general',{general:d.general});$('library-dialog').close();}
     else if(d.remove)dispatch('removeSeat',{target:d.remove});
-    else if(d.skill){const skill=GENERAL_MAP[me().general].skills.find(s=>s.name===d.skill);actionDialog(`发动「${skill.name}」`,skill.text+'（复杂效果手动结算）',note=>dispatch('skill',{skill:skill.name,note}));}
-    else if(d.do){b.disabled=true;try{await actions[d.do]?.();}finally{b.disabled=false;}}
+    else if(d.skill){$('skill-guide').hidden=false;ui.openSkill(d.skill);}
+    else if(d.do){b.disabled=true;try{await actions[d.do]?.();}finally{b.disabled=false;ui.refresh();}}
   }catch(error){toast(error.message);status(error.message);}
 });
-$('create-form').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);create(false,{name:f.get('name'),size:f.get('size'),ex:f.has('ex'),selectionMode:f.get('selectionMode'),deckSet:f.get('deckSet'),mode:f.get('mode'),generalPacks:f.getAll('generalPacks')});});
+$('create-form').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget),n=Number(f.get('size'));if(!String(f.get('size')||'').trim()||!Number.isFinite(n)||!Number.isInteger(n)||n<2||n>8){$('size-hint').textContent='请输入2–8之间的整数';return;}create(false,{name:f.get('name'),size:f.get('size'),ex:f.has('ex'),selectionMode:f.get('selectionMode'),deckSet:f.get('deckSet'),mode:f.get('mode'),skillAutomation:f.has('skillAutomation'),generalPacks:f.getAll('generalPacks')});});
+$('create-form').elements.size.addEventListener('input',e=>{const n=Number(e.target.value);$('size-hint').textContent=e.target.value&&Number.isInteger(n)&&n>=2&&n<=8?n<4?'⚠ 2–3人为非标准身份游戏，自定义对抗。':'标准身份局 · '+n+'人':'请输入2–8之间的整数';});
 $('action-form').addEventListener('submit',e=>{e.preventDefault();try{actionCallback?.($('action-text').value.trim());$('action-dialog').close();}catch(error){toast(error.message);}});
 $('chat-form').addEventListener('submit',e=>{e.preventDefault();try{dispatch('chat',{message:$('chat-input').value});$('chat-input').value='';}catch(error){toast(error.message);}});
 $('library-search').addEventListener('input',renderLibrary);

@@ -1,0 +1,34 @@
+// Synthetic complete-skill states, real worker/UI transactions, temporary profile.
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {newRoom,reduce,validateState} from '../dist/backend/engine.js';
+import {freshRules,pump} from '../dist/backend/rules.js';
+import {stateOf} from '../dist/backend/skills.js';
+import {processComplete,startComplete} from '../dist/backend/complete-skills.js';
+import {GENERAL_MAP} from '../dist/data/generals.js';
+import {CARD_BY_ID,deckFor} from '../dist/data/cards.js';
+import {command,setSeat} from './browser-controls.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const browser=await chromium.launch({headless:true,...(process.env.BROWSER_PATH?{executablePath:process.env.BROWSER_PATH}:{})}),p=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];
+p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await mkdir('test-results',{recursive:true});
+const act=(s,id,type,more={})=>reduce(s,id,{type,rev:s.rev,...more});
+function fixture(g){let s=newRoom({hostId:'host',token:'h'.repeat(32),size:4,practice:true,selectionMode:'choose',skillAutomation:true});while(s.players.length<4)s=act(s,'host','localSeat');const ids=[g,...['caocao','guanyu','zhaoyun','lvbu'].filter(id=>GENERAL_MAP[id].baseName!==GENERAL_MAP[g].baseName).slice(0,3)];s.players.forEach((t,i)=>s=act(s,t.id,'general',{general:ids[i]}));s=act(s,'host','start');s.rules=freshRules();s.completeSkills=true;s.turn='host';s.phase=3;s.rev=400;for(const [i,t]of s.players.entries()){t.hp=t.maxHp=4;stateOf(t);if(i)t.skillState.lost=['*'];}return s;}
+function give(s,p,kind){const id=deckFor(s.deckSet,s.ex).find(c=>c.kind===kind).id;for(const z of [s.deck,s.pool,s.discard,...s.players.flatMap(t=>[t.hand,t.equip,t.judge])]){const i=z.indexOf(id);if(i>=0)z.splice(i,1);}p.hand.push(id);return id;}
+const revision=async()=>Number((await p.locator('#revision').textContent()).split('/')[1]);
+const wait=n=>p.waitForFunction(n=>Number(document.querySelector('#revision').textContent.split('/')[1])===n,n);
+async function load(s){validateState(s);await command(p,'tools');await p.locator('#import-file').setInputFiles({name:'complete-fixture.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(s))});await p.waitForFunction(({rev,room})=>Number(document.querySelector('#revision').textContent.split('/')[1])===rev&&document.querySelector('.room-code').textContent===room,{rev:s.rev+1,room:s.roomId.slice(0,8).toUpperCase()});await p.evaluate(()=>scrollTo(0,0));}
+const choice=id=>p.locator(`#response-panel [data-ui=skill-choice][data-choice="${id}"]`).click();
+try{
+ await p.goto(process.env.TEST_URL||'http://localhost:4173');await command(p,'practice');await p.locator('#game:not([hidden])').waitFor();
+ // Material filtering and disabled incomplete submission, with keyboard selection.
+ let s=fixture('luzhi');processComplete(s,{owner:'host',skill:'明任',step:'initial'});await load(s);assert(await p.locator('[data-choice=yes]').isDisabled());assert.equal(await p.locator('#hand [data-zone=decision]').count(),s.players[0].hand.length);const material=s.players[0].hand[0];await p.locator(`#hand [data-card="${material}"]`).focus();await p.keyboard.press('Enter');assert(await p.locator('[data-choice=yes]').isEnabled());let r=await revision();await choice('yes');await wait(r+1);assert(await p.locator('[data-ui=special-summary]').count()>0);await p.locator('[data-ui=special-summary]').first().click();assert.match(await p.locator('#detail-copy').textContent(),/任 1/);await p.keyboard.press('Escape');
+ // Source-of-truth private view, whole decision flow and all responsive sizes.
+ s=fixture('jie_guanyu');const cost=s.players[0].hand[0],shown=s.players[1].hand[0],target=s.players[1].id;s=act(s,'host','activateSkill',{skill:'义绝',cards:[cost],targets:[target]});await load(s);await setSeat(p,target);for(const [w,h]of [[1440,900],[1280,720],[844,390],[390,844]]){await p.setViewportSize({width:w,height:h});await p.evaluate(()=>scrollTo(0,0));assert.equal(await p.locator('#hand [data-zone=decision]').count(),s.players[1].hand.length);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth),w);await p.screenshot({path:`test-results/complete-decision-${w}.png`});}await p.locator(`#hand [data-card="${shown}"]`).click();r=await revision();await choice('yes');await wait(r+1);
+ // Large native choice list, actual concealed bluff, seat handoff, response resume.
+ await p.setViewportSize({width:1440,height:900});s=fixture('yuji');const sha=give(s,s.players[0],'sha');s=act(s,'host','activateSkill',{skill:'蛊惑',cards:[],targets:[]});await load(s);await p.locator('#decision-option').selectOption('sha');assert(await p.locator('[data-ui=decision-submit]').isDisabled());await p.locator(`#hand [data-card="${sha}"]`).click();await p.locator(`[data-target-seat="${s.players[1].id}"]`).click();r=await revision();await p.locator('[data-ui=decision-submit]').click();await wait(r+1);assert.equal(await p.locator('#hand [data-card]').count(),s.players[0].hand.length-1);await setSeat(p,s.players[1].id);assert.match(await p.locator('#response-panel').textContent(),/蛊惑质疑/);r=await revision();await choice('challenge');await wait(r+1);assert.match(await p.locator('#response-panel').textContent(),/使用杀/);
+ // Private avatars can be selected without displaying all skill text on the board.
+ s=fixture('zuoci');startComplete(s);pump(s);await load(s);if(await p.locator('#decision-option').count()){assert(await p.locator('#decision-option option').count()>=3);r=await revision();await p.locator('[data-ui=decision-submit]').click();await wait(r+1);}else {const first=await p.locator('[data-ui=skill-choice]').first().getAttribute('data-choice');r=await revision();await choice(first);await wait(r+1);}assert(await p.locator('[data-ui=special-summary]').count()>0);assert((await p.locator('#my-skills .skill-button').count())>=3);await p.screenshot({path:'test-results/complete-avatar-desktop.png'});
+ // A system reduced-motion change during the deal releases every inert candidate.
+ const draft=newRoom({hostId:'host',token:'h'.repeat(32),size:2,selectionMode:'five'});await load(draft);await command(p,'library');await p.emulateMedia({reducedMotion:'reduce'});await p.waitForFunction(()=>[...document.querySelectorAll('.hero-deal .library-entry')].every(e=>!e.inert));await p.keyboard.press('Escape');
+ assert.deepEqual(errors,[]);console.log('PASS: complete skill material/target guidance, keyboard choice, special zones, private avatar/native options, concealed guhuo/resume, 1440/1280/844/390 layouts and mid-deal reduced motion.');
+}catch(e){await p.screenshot({path:'test-results/complete-failure.png'});console.error(errors);console.error(await p.locator('#toast').textContent());throw e;}finally{await browser.close();}

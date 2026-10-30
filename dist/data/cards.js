@@ -47,7 +47,7 @@ export const CARD_TYPES = [
   def('tengjia','藤甲','装备','普通杀、南蛮入侵、万箭齐发无效；受到火焰伤害加1。',{slot:'armor',pack:'army'}),
   def('baiyin','白银狮子','装备','受到的伤害至多1点；失去装备区中的此牌后回复1点体力。',{slot:'armor',pack:'army'}),
   def('hualiu','骅骝','装备','其他角色计算与你的距离时加1。',{slot:'plus',pack:'army'}),
-  def('muniu','木牛流马','装备','出牌阶段限一次，可将一张手牌扣置于此；可将此装备移给其他角色，储牌随之移动。需手动裁定。',{slot:'treasure',pack:'wood',manual:true}),
+  def('muniu','木牛流马','装备','出牌阶段限一次，将一张手牌扣置于此，然后可将此装备移给宝物栏空置的其他角色。持有者可使用或打出储牌；装备区之间移动时储牌随行，否则储牌进入弃牌堆。',{slot:'treasure',pack:'wood',manual:true}),
 ];
 export const CARD_MAP = Object.fromEntries(CARD_TYPES.map(c => [c.id,c]));
 const deck = [];

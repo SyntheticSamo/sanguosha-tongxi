@@ -1,3 +1,4 @@
+import {command as sceneCommand,reveal as revealControl,setSeat} from './browser-controls.mjs';
 // Optional end-to-end automatic rules QA; uses only temporary browser contexts.
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
@@ -10,7 +11,7 @@ const browser=await chromium.launch({headless:true,...(process.env.BROWSER_PATH?
 const base=process.env.TEST_URL||'http://localhost:4173',dest=path.resolve(process.env.SCREENSHOT_DIR||'test-results');await mkdir(dest,{recursive:true});
 const errors=[],contexts=[];
 async function page(){const c=await browser.newContext({viewport:{width:1440,height:1000}});contexts.push(c);const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(base);return p;}
-const cmd=async(p,name)=>{if(!await p.locator(`[data-do="${name}"]:visible`).count())await p.locator(`[data-do="${name}"]`).evaluateAll(bs=>{for(const b of bs){if(b.closest('[hidden]')||b.closest('dialog:not([open])'))continue;let d=b.parentElement;while(d){if(d.tagName==='DETAILS')d.open=true;d=d.parentElement;}}});await p.locator(`[data-do="${name}"]:visible`).first().click();};
+const cmd=sceneCommand;
 const rev=async p=>Number((await p.locator('#revision').textContent()).split('/')[1]);
 const waitRev=(p,n)=>p.waitForFunction(n=>Number(document.querySelector('#revision').textContent.split('/')[1])>=n,n);
 async function connect(h,g){
@@ -24,7 +25,7 @@ async function pickTarget(p,id){const button=p.locator(`[data-target-seat="${id}
 async function play(p,id,target){await select(p,id);await pickTarget(p,target);const n=await rev(p);await cmd(p,'play');await waitRev(p,n+1);}
 async function passBoth(h,g){let n=await rev(h);await cmd(h,'pass');await waitRev(g,n+1);n=await rev(g);await cmd(g,'pass');await waitRev(h,n+1);}
 try{
- const host=await page(),guest=await page();await cmd(host,'create');await host.locator('[name=size]').selectOption('2');await host.locator('[name=selectionMode]').selectOption('five');await host.locator('#create-form button.primary').click();await host.locator('#game:not([hidden])').waitFor();await connect(host,guest);
+ const host=await page(),guest=await page();await cmd(host,'create');await host.locator('[name=size]').fill('2');await host.locator('[name=selectionMode]').selectOption('five');await host.locator('#create-form button.primary').click();await host.locator('#game:not([hidden])').waitFor();await connect(host,guest);
  const candidateLists=[];
  for(const p of [host,guest]){await cmd(p,'library');const ids=await p.locator('[data-general]').evaluateAll(bs=>bs.map(b=>b.dataset.general));assert.equal(ids.length,5);candidateLists.push(ids);await p.locator('[data-general]').first().click();}
  assert.equal(new Set(candidateLists.flat().map(id=>GENERAL_MAP[id].baseName)).size,10);
@@ -57,9 +58,9 @@ try{
  assert.equal(await host.locator(`[data-target-seat="${foe}"] .target-index`).textContent(),'1');assert.equal(await host.locator('[data-target-seat=host] .target-index').textContent(),'2');
  await host.locator(`[data-target-seat="${foe}"]`).click();assert.equal(await self.locator('.target-index').textContent(),'1');await pickTarget(host,foe);
  let turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await passBoth(host,guest);
- assert((await host.locator('[data-seat=host] .seat-hp').textContent()).includes('铁索'));assert((await host.locator(`[data-seat="${foe}"] .seat-hp`).textContent()).includes('铁索'));
+ assert.equal(await host.locator('[data-seat=host] [aria-label="铁索横置"]').count(),1);assert.equal(await host.locator(`[data-seat="${foe}"] [aria-label="铁索横置"]`).count(),1);
  await select(host,borrow);await cmd(host,'clear-targets');await pickTarget(host,foe);await pickTarget(host,'host');await host.screenshot({path:path.join(dest,'07-click-targets.png'),fullPage:true});
  turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await guest.waitForFunction(()=>document.querySelector('#response-panel').textContent.includes('借刀'));
  turnRev=await rev(guest);await cmd(guest,'pass');await waitRev(host,turnRev+1);assert.equal(await host.locator(`#hand [data-card="${byKind('qilin')}"]`).count(),1);assert.deepEqual(errors,[]);
  console.log('PASS: player-frame targeting, deselection, keyboard activation, nested equipment controls, ordered chain and borrowed-sword targets, auto rules and reconnect.');
-}catch(error){for(const c of contexts)for(const p of c.pages())console.error(await p.evaluate(()=>({toast:document.querySelector('#toast')?.textContent,status:document.querySelector('#connection-status')?.textContent})).catch(()=>({closed:true})));throw error;}finally{await browser.close();}
+}catch(error){console.error("Page errors:",errors);for(const c of contexts)for(const p of c.pages())console.error(await p.evaluate(()=>({toast:document.querySelector('#toast')?.textContent,status:document.querySelector('#connection-status')?.textContent})).catch(()=>({closed:true})));throw error;}finally{await browser.close();}

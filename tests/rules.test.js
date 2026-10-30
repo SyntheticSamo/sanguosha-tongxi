@@ -26,7 +26,7 @@ test('elemental chain damage propagates once and resets links',()=>{let s=game()
 test('duel alternates actual slash responses and damages first passer',()=>{let s=game(),a=s.players[0],b=s.players[1],duel=give(s,a,'juedou'),sha=give(s,b,'sha');s=counterPass(command(s,'host','use',{cards:[duel],target:b.id}));assert.equal(s.rules.pending.kind,'duel');s=command(s,b.id,'respond',{cards:[sha]});assert.equal(s.rules.pending.player,'host');const before=s.players[0].hp;s=command(s,'host','pass');assert.equal(s.players[0].hp,before-1);});
 test('nullification counter-counter restores a trick',()=>{let s=game(),a=s.players[0],b=s.players[1],card=give(s,a,'wuzhong'),w1=give(s,b,'wuxie'),w2=give(s,a,'wuxie',1);s=command(s,'host','use',{cards:[card]});s=command(s,b.id,'respond',{cards:[w1]});assert(s.rules.pending.negated);s=command(s,'host','respond',{cards:[w2]});assert(!s.rules.pending.negated);const count=s.players[0].hand.length;s=counterPass(s);assert.equal(s.players[0].hand.length,count+2);});
 test('pindian selections remain hidden until both commit and equal ranks do not win',()=>{
- let s=game(),a=s.players[0],b=s.players[1],ca=give(s,a,'sha',1),cb=give(s,b,'sha',2);assert.equal(CARD_BY_ID[ca].rank,CARD_BY_ID[cb].rank);
+ let s=game(),a=s.players[0],b=s.players[1];const slashes=s.deck.filter(id=>CARD_BY_ID[id].kind==='sha'),first=slashes.find(id=>slashes.some(other=>id!==other&&CARD_BY_ID[id].rank===CARD_BY_ID[other].rank)),second=slashes.find(id=>id!==first&&CARD_BY_ID[id].rank===CARD_BY_ID[first].rank),catalog=deckFor(s.deckSet,s.ex).filter(c=>c.kind==='sha');const ca=give(s,a,'sha',catalog.findIndex(c=>c.id===first)),cb=give(s,b,'sha',catalog.findIndex(c=>c.id===second));assert.equal(CARD_BY_ID[ca].rank,CARD_BY_ID[cb].rank);
  s=command(s,'host','pindian',{target:b.id});s=command(s,'host','respond',{cards:[ca]});const publicView=project(s,s.players[2].id);assert(!JSON.stringify(publicView).includes(ca));assert(!publicView.pending.cards);validateState(s);
  s=command(s,b.id,'respond',{cards:[cb]});assert.equal(s.rules.lastResult.winner,null);assert(s.pool.includes(ca)&&s.pool.includes(cb));validateState(s);
 });
@@ -41,9 +41,9 @@ test('random / chosen / five-choice selection are enforced and private',()=>{
 });
 import {GENERAL_MAP} from '../dist/data/generals.js';
 const awaitGeneralMap=()=>GENERAL_MAP;
-test('v1 saves migrate to free mode, standard deck and schema2',()=>{const legacy=game();legacy.schema=1;delete legacy.mode;delete legacy.deckSet;delete legacy.rules;legacy.deck=legacy.deck.filter(id=>CARD_BY_ID[id].pack==='standard');for(const p of legacy.players)p.hand=p.hand.filter(id=>CARD_BY_ID[id].pack==='standard'); // Build a complete legacy fixture.
+test('v1 saves migrate to free mode, standard deck and current schema without enabling new skills',()=>{const legacy=game();legacy.schema=1;delete legacy.mode;delete legacy.deckSet;delete legacy.rules;legacy.deck=legacy.deck.filter(id=>CARD_BY_ID[id].pack==='standard');for(const p of legacy.players)p.hand=p.hand.filter(id=>CARD_BY_ID[id].pack==='standard'); // Build a complete legacy fixture.
 const ids=new Set([...legacy.deck,...legacy.players.flatMap(p=>p.hand)]);for(const c of deckFor('standard'))if(!ids.has(c.id))legacy.deck.push(c.id);
-const migrated=migrateState(legacy);assert.equal(migrated.schema,2);assert.equal(migrated.mode,'manual');assert.equal(migrated.deckSet,'standard');validateState(migrated);});
+const migrated=migrateState(legacy);assert.equal(migrated.schema,6);assert.equal(migrated.skillAutomation,false);assert.equal(migrated.mode,'manual');assert.equal(migrated.deckSet,'standard');validateState(migrated);});
 test('delay placement has no premature counter window, nullification is before judgment',()=>{
  let s=game(),a=s.players[0],b=s.players[1],le=give(s,a,'le'),wuxie=give(s,a,'wuxie');s=command(s,'host','use',{cards:[le],target:b.id});assert.equal(s.rules.pending,null);assert(s.players[1].judge.includes(le));
  s.turn=b.id;s.phase=0;const before=s.deck.length;s=command(s,b.id,'phase');assert.equal(s.rules.pending.kind,'counter');assert.equal(s.deck.length,before);

@@ -54,7 +54,7 @@ g('diaochan','貂蝉','群',3,'女','绝世的舞姬',[
  ['离间','出牌阶段限一次：弃一张牌，令一名男性角色视为对另一名男性角色使用决斗（经典版不可无懈）。'],['闭月','结束阶段可摸一张牌。']]),
 ];
 export const GENERAL_PACKS={standard:'标准',jie:'界限突破',wind:'风',fire:'火',forest:'林',mountain:'山',yin:'阴',thunder:'雷'};
-export const GENERALS=[...STANDARD_GENERALS.map(g=>({...g,baseName:g.name,pack:'standard',edition:'标准身份版',sourceNote:'与界版分开；复杂技能手动裁定',...STANDARD_UPDATES[g.id]})),...EXPANSION_GENERALS];
+export const GENERALS=[...STANDARD_GENERALS.map(g=>({...g,baseName:g.name,pack:'standard',edition:'标准身份版',sourceNote:'与界版分开；按本条目所列实体版本处理',...STANDARD_UPDATES[g.id]})),...EXPANSION_GENERALS];
 export const GENERAL_MAP = Object.fromEntries(GENERALS.map(g=>[g.id,g]));
 export const ROLES = {lord:'主公',loyal:'忠臣',rebel:'反贼',spy:'内奸'};
 export const PHASES = ['准备','判定','摸牌','出牌','弃牌','结束'];

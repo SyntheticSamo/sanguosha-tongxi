@@ -56,7 +56,7 @@ test('new peers blocked after start but original seat can reconnect with token',
 });
 test('dead seats require host, dying status, and discard all personal cards',()=>{
  let s=start(),p=s.players[1];assert.throws(()=>act(s,p.id,'death',{target:p.id}),/仅房主/);assert.throws(()=>act(s,host,'death',{target:p.id}),/求桃/);
- s=act(s,host,'hp',{target:p.id,delta:-5});s=act(s,host,'death',{target:p.id});assert(s.players[1].dead);assert.equal(s.players[1].hand.length,0);assert.equal(project(s,host).players[1].role,s.players[1].role);validateState(s);
+ while(s.players[1].hp>0)s=act(s,host,'hp',{target:p.id,delta:-5});s=act(s,host,'death',{target:p.id});assert(s.players[1].dead);assert.equal(s.players[1].hand.length,0);assert.equal(project(s,host).players[1].role,s.players[1].role);validateState(s);
 });
 test('only host starts / removes seats / finishes',()=>{
  let s=lobby();const guest=s.players[1].id;assert.throws(()=>act(s,guest,'start'),/仅房主/);assert.throws(()=>act(s,guest,'removeSeat',{target:host}),/仅房主/);s=act(s,host,'start');assert.throws(()=>act(s,guest,'finish',{winner:'反贼'}),/仅房主/);
@@ -64,7 +64,7 @@ test('only host starts / removes seats / finishes',()=>{
 });
 test('tampered backups with duplicate or missing cards fail validation',()=>{const s=start();s.deck[0]=s.deck[1];assert.throws(()=>validateState(s),/重复/);const t=start();t.deck.pop();assert.throws(()=>validateState(t),/守恒/);});
 test('protocol rejects malformed envelopes, stale snapshots, and cross-room state',()=>{
- assert.equal(parseMessage(JSON.stringify(envelope('sync'))).kind,'sync');assert.throws(()=>parseMessage('{"v":4,"kind":"sync"}'),/不兼容/);
+ assert.equal(parseMessage(JSON.stringify(envelope('sync'))).kind,'sync');assert.throws(()=>parseMessage('{"v":3,"kind":"sync"}'),/不兼容/);
  const v=project(start(),host);assert.equal(acceptSnapshot(v,{...v,rev:v.rev-1}),false);assert.throws(()=>acceptSnapshot(v,{...v,roomId:'different'}),/房间不匹配/);
 });
 test('shuffle does not mutate input and is a permutation',()=>{const xs=[1,2,3,4];const ys=shuffle(xs,()=>0);assert.deepEqual(xs,[1,2,3,4]);assert.deepEqual([...ys].sort(),xs);});

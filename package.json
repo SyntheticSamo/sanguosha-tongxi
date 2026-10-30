@@ -1,5 +1,22 @@
 {
-  "name": "sanguosha-tongxi", "version": "2.0.1", "private": true,
-  "type": "module", "engines": { "node": ">=22" },
-  "scripts": { "start": "node scripts/serve.mjs", "test": "node --test", "check": "node scripts/check.mjs" }
+  "name": "sanguosha-tongxi",
+  "version": "6.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test",
+    "check": "node scripts/check.mjs",
+    "test:browser:ux": "node scripts/browser-ux.mjs",
+    "test:browser:skills": "node scripts/browser-skills.mjs",
+    "test:browser:skill-sync": "node scripts/browser-skill-sync.mjs",
+    "test:browser:scene": "node scripts/browser-scene.mjs",
+    "test:browser:complete-skills": "node scripts/browser-complete-skills.mjs",
+    "test:browser:complete-sync": "node scripts/browser-complete-sync.mjs",
+    "test:browser:tactile": "node scripts/browser-tactile.mjs",
+    "test:browser:experience": "node scripts/browser-experience.mjs"
+  }
 }

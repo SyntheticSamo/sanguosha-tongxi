@@ -1,0 +1,24 @@
+import {command as sceneCommand,reveal as revealControl,setSeat} from './browser-controls.mjs';
+// Real local WebRTC proof for persisted private skill decisions. No debug API.
+import assert from 'node:assert/strict';
+import {newRoom,joinRoom,reduce,validateState} from '../dist/backend/engine.js';
+import {freshRules} from '../dist/backend/rules.js';
+import {deckFor} from '../dist/data/cards.js';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const browser=await chromium.launch({headless:true,...(process.env.BROWSER_PATH?{executablePath:process.env.BROWSER_PATH}:{})}),contexts=[],errors=[];
+const base=process.env.TEST_URL||'http://localhost:4173';
+async function page(){const c=await browser.newContext({viewport:{width:1440,height:1000}});contexts.push(c);const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(base);return p;}
+const cmd=sceneCommand;
+async function connect(h,g){for(const p of [h,g]){if(!await p.locator('#connect-dialog').evaluate(d=>d.open))await cmd(p,'connect');if(!await p.locator('#connect-dialog details').evaluate(d=>d.open))await p.locator('#connect-dialog summary').click();await p.locator('#use-stun').uncheck();}await cmd(h,'offer');await h.waitForFunction(()=>document.querySelector('#offer-output').value.startsWith('TX1'));await g.locator('#offer-input').fill(await h.locator('#offer-output').inputValue());await cmd(g,'answer');await g.waitForFunction(()=>document.querySelector('#answer-output').value.startsWith('TX1'));await h.locator('#answer-input').fill(await g.locator('#answer-output').inputValue());await cmd(h,'accept');await g.waitForFunction(()=>document.querySelector('#network-badge').textContent.includes('P2P 已连接'));for(const p of [h,g])await p.locator('#connect-dialog [data-close]').click();}
+const act=(s,id,type,data={})=>reduce(s,id,{type,rev:s.rev,...data});
+try{
+ const h=await page(),g=await page();await cmd(h,'create');await h.locator('[name=size]').fill('2');await h.locator('#create-form button.primary').click();await h.locator('#game:not([hidden])').waitFor();await connect(h,g);
+ const entry=await g.evaluate(()=>Object.entries(sessionStorage).find(([k])=>k.startsWith('tongxi-seat:'))),roomId=entry[0].slice('tongxi-seat:'.length);
+ let s=newRoom({hostId:'host',token:'h'.repeat(32),roomId,size:2,skillAutomation:true,selectionMode:'choose'});s=joinRoom(s,{token:entry[1],name:'技能好友'}).state;const foe=s.players[1].id;s=act(s,'host','general',{general:'guojia'});s=act(s,foe,'general',{general:'guanyu'});s=act(s,'host','start');s.rules=freshRules();s.players.forEach(p=>{p.hp=p.maxHp=4;});s.turn=foe;s.phase=3;
+ const sha=deckFor('army').find(c=>c.kind==='sha').id;for(const zone of [s.deck,...s.players.map(p=>p.hand)]){const i=zone.indexOf(sha);if(i>=0)zone.splice(i,1);}s.players[1].hand.push(sha);s=act(s,foe,'use',{cards:[sha],target:'host'});s=act(s,'host','pass');s.rev=300;validateState(s);
+ await cmd(h,'tools');await h.locator('#import-file').setInputFiles({name:'private-skill.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(s))});await h.waitForFunction(()=>document.querySelector('#revision').textContent==='SYNC / 301');await connect(h,g);
+ await h.locator('[data-ui=skill-choice][data-choice=yes]').click();await h.locator('#peek-cards [data-card]').first().waitFor();const privateIds=await h.locator('#peek-cards [data-card]').evaluateAll(es=>es.map(e=>e.dataset.card));assert.equal(privateIds.length,2);await g.waitForFunction(()=>document.querySelector('#revision').textContent==='SYNC / 302');for(const id of privateIds)assert.equal(await g.locator(`[data-card="${id}"]`).count(),0);assert(await g.locator('#peek-panel').isHidden());
+ await h.reload();await cmd(h,'restore');await h.locator('#response-panel').waitFor();assert.deepEqual(await h.locator('#peek-cards [data-card]').evaluateAll(es=>es.map(e=>e.dataset.card)),privateIds);assert.equal(await h.locator('.new-card,.hp-float').count(),0);await connect(h,g);for(const id of privateIds)assert.equal(await g.locator(`[data-card="${id}"]`).count(),0);
+ await h.locator(`#peek-cards [data-card="${privateIds[0]}"]`).click();await h.locator(`[data-target-seat="${foe}"]`).click();await h.locator('[data-ui=skill-choice][data-choice=give]').click();await g.locator(`#hand [data-card="${privateIds[0]}"]`).waitFor();assert.equal(await g.locator(`[data-card="${privateIds[1]}"]`).count(),0);await h.locator('[data-ui=skill-choice][data-choice=keep]').click();await h.locator('#response-panel').waitFor({state:'hidden'});assert(await h.locator('#peek-panel').isHidden());assert.deepEqual(errors,[]);
+ console.log('PASS: real WebRTC private skill projection, host refresh during distribution, token reconnect, exact card custody and no historical animations.');
+}catch(e){console.error('Page errors:',errors);throw e;}finally{await browser.close();}

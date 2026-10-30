@@ -31,4 +31,18 @@
 - [MDN WebRTC](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols)：ICE、STUN、NAT与TURN。
 - [MDN RTCDataChannel](https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel)：有序可靠数据传输与缓冲。
 
-技能文字为功能性归纳，不附台词或原版插画。本项目不宣称已自动实现所有武将技能，亦不把未见实体牌面的版本认作2026最新印刷。
+技能文字为功能性归纳，不附台词或原版插画。新建完整模式接入本项目选定101将文本的武将技能效果，不把未见实体牌面的版本认作2026最新印刷；实现范围不等于所有技能组合或实体印次均已核验。
+
+## v4 结算补充口径
+
+- 2013集智交换位置：[游戏牌操作](https://gltjk.com/sanguosha/rules/glossary/gamecard.html)，交换手牌扣置牌堆顶，同时获得原基本牌。
+- 标准2013与经典普通锦囊摸牌定义分列：[蜀势力武将](https://gltjk.com/sanguosha/rules/card/hero/shu.html)。陆抗宝物集智的本桌引用定义采用经典版；尚未独立确认其所选实体印次的引用，应保留此限制。
+- 化身更换屯田时田入弃牌堆：[山包左慈FAQ](https://u.360.cn/gl/article/9110/)。其他专属牌区随所关联技能失去时清理；临时谦逊手牌按已生成的回合末效果归还。
+- 蛊惑采用条目所选新版“质疑才翻开、真实得缠怨”规则；扣置处理牌按尚未公开的状态投影，不混入旧版质疑奖惩或移动版其他重做。参考 [于吉分版本及FAQ](https://sanguosha.fandom.com/zh/wiki/%E4%BA%8E%E5%90%89)。
+
+## v5 装备与展示口径
+
+- [实体身份规则集装备条目](https://gltjk.com/sanguosha/rules/card/equipment.html)：六件武器触发时机、方天额外目标、青龙同目标追加、木牛游戏外储牌和移动清理。
+- [游卡木牛流马官方FAQ](https://www.sanguosha.com/news/20140521_4929_0717)：持有者可见、使用／打出及转化、混合丈八／乱击材料，不能直接拼点或作为普通弃牌费用。
+- [贯石斧FAQ](https://www.feihuo.com/article/detail/article_id/11422.html?flag=1)：不能弃斧自身、两牌同时支付、先结算闪触发的雷击。该FAQ为旧版辅助证据，与所选实体规则条目一并使用，不据此覆盖其他印次。
+- [锦囊规则](https://gltjk.com/sanguosha/rules/card/scroll.html)：无懈针对锦囊对当前目标的一次效果，支持反无懈；展示记录没有独立牌区含义。
