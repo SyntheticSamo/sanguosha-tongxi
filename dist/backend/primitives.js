@@ -1,6 +1,6 @@
 import { CARD_BY_ID, CARD_MAP, cardLabel, red } from '../data/cards.js';
 import {storedCards,isUsableHand} from './wood.js';
-import {cardMotion} from './presentation.js';
+import {cardMotion,presentationStep,recordEquipmentCue} from './presentation.js';
 import { GENERAL_MAP } from '../data/generals.js';
 import {skillGeneral,lockedSkill} from '../data/skill-traits.js';
 export {skillGeneral};
@@ -14,7 +14,8 @@ export function note(s, text) {
 }
 export function event(s,type,data={}) {
   s.eventSeq=(s.eventSeq||0)+1;s.events??=[];
-  s.events.push({id:`${s.rev}:${s.eventSeq}`,rev:s.rev,type,...data});s.events=s.events.slice(-120);
+  const health=['damage','heal'].includes(type)&&s.players.find(p=>p.id===data.player),hp=health?{hpAfter:health.hp,hpBefore:health.hp+(type==='damage'?data.amount:-data.amount)}:{};
+  s.events.push({id:`${s.rev}:${s.eventSeq}`,rev:s.rev,type,...data,...hp,...(s.tableExperience?{presentation:presentationStep(s,{recordId:data.recordId})}:{})});s.events=s.events.slice(-120);
 }
 export function randomIndex(n) {
   check(n>0,'随机范围为空'); const limit=Math.floor(0x100000000/n)*n, buf=new Uint32Array(1);
@@ -33,11 +34,19 @@ export const hasSkill = (p,name) => !!p&&!p.skillState?.lost?.includes('*')&&!p.
 export const cardSuitFor=(p,c)=>hasSkill(p,'红颜')&&c.suit==='S'?'H':c.suit;
 export const cardRedFor=(p,c)=>['H','D'].includes(cardSuitFor(p,c));
 export const equipKind = (p,slot) => p.equip.map(id=>CARD_BY_ID[id].kind).find(k=>CARD_MAP[k].slot===slot);
-export function distance(s,fromId,toId) {
-  if(fromId===toId)return 0; const people=alive(s),a=people.findIndex(p=>p.id===fromId),b=people.findIndex(p=>p.id===toId);
-  if(a<0||b<0)return Infinity; const from=people[a],to=people[b],d=Math.abs(a-b);
-  return Math.max(1,Math.min(d,people.length-d)-(equipKind(from,'minus')?1:0)-(hasSkill(from,'马术')?1:0)+(equipKind(to,'plus')?1:0)-(from.skillState?.turn?.distanceReduction||0)-(s.completeSkills&&hasSkill(from,'屯田')?(from.skillState?.zones?.field?.length??from.skillState?.zones?.field?.count??0):0));
+// Distance and its public explanation share one calculation.
+export function distanceBreakdown(s,fromId,toId) {
+  if(fromId===toId)return {base:0,modifiers:[],value:0};
+  const people=alive(s),a=people.findIndex(p=>p.id===fromId),b=people.findIndex(p=>p.id===toId);
+  if(a<0||b<0)return {base:null,modifiers:[],value:Infinity};
+  const from=people[a],to=people[b],d=Math.abs(a-b),base=Math.min(d,people.length-d),modifiers=[];
+  const add=(name,value)=>{if(value)modifiers.push({name,value});};
+  add('进攻坐骑',equipKind(from,'minus')?-1:0);add('马术',hasSkill(from,'马术')?-1:0);add('防御坐骑',equipKind(to,'plus')?1:0);
+  add('本回合距离修正',-(from.skillState?.turn?.distanceReduction||0));
+  add('屯田',s.completeSkills&&hasSkill(from,'屯田')?-(from.skillState?.zones?.field?.length??from.skillState?.zones?.field?.count??0):0);
+  return {base,modifiers,value:Math.max(1,base+modifiers.reduce((n,m)=>n+m.value,0))};
 }
+export const distance=(s,fromId,toId)=>distanceBreakdown(s,fromId,toId).value;
 export function unlimitedDistance(s,p,t,ids=[],kind=null){
   if(!s.skillAutomation)return false;const st=p.skillState?.turn||{};
   return st.unlimitedDistance||s.completeSkills&&hasSkill(p,'往烈')&&!st.cards||st.xiongluan===t.id||ids.some(id=>st.freeSuits?.includes(cardSuitFor(p,CARD_BY_ID[id])))||isSlash(kind)&&(st.tianyi===true||skillGeneral(p,'武圣')==='jie_guanyu'&&hasSkill(p,'武圣')&&ids.some(id=>cardSuitFor(p,CARD_BY_ID[id])==='D')||skillGeneral(p,'咆哮')==='jie_zhangfei'&&hasSkill(p,'咆哮')&&s.rules.slash>0||st.zhangjiang&&ids.length>0&&ids.every(id=>cardRedFor(p,CARD_BY_ID[id])));
@@ -47,17 +56,18 @@ export const cardAttackRange=(s,p,ids=[])=>s.skillAutomation&&hasSkill(p,'烈弓
 export function cardDistance(s,p,t,ids=[]){if(!ids.some(id=>p.equip.includes(id)))return distance(s,p.id,t.id);return distance({...s,players:s.players.map(x=>x.id===p.id?{...x,equip:x.equip.filter(id=>!ids.includes(id))}:x)},p.id,t.id);}
 export const isSlash = kind => ['sha','fire_sha','thunder_sha'].includes(kind);
 export const natureOf = kind => kind==='fire_sha'?'fire':kind==='thunder_sha'?'thunder':'normal';
-export function removeOwned(s,p,ids,{handOnly=false,reason='discard'}={}) {
+export function removeOwned(s,p,ids,{handOnly=false,reason='discard',prepaid=false}={}) {
   check(Array.isArray(ids)&&ids.length>0&&ids.length<=161&&new Set(ids).size===ids.length,'请选择有效卡牌');
   for(const id of ids)check((handOnly?[p.hand]:[p.hand,p.equip,...(reason==='use'||reason==='respond'?[storedCards(p)]:[])]).some(z=>z.includes(id)),'卡牌不属于你的可用牌区');
+  if(s.tableExperience){s.presentationDepartures??=[];for(const zone of ['hand','equip','wood']){const cards=ids.filter(id=>(zone==='wood'?storedCards(p):p[zone]).includes(id));if(cards.length)s.presentationDepartures.push({ids:cards,from:{zone,owner:p.id},presentation:presentationStep(s)});}}
   const beforeHand=p.hand.length,equipment=ids.filter(id=>p.equip.includes(id)).length;
   if(s.completeSkills){s.skillMoveCauses??={};for(const id of ids)s.skillMoveCauses[id]=reason;}
   for(const id of ids){const zone=[p.hand,p.equip,storedCards(p)].find(z=>z.includes(id));zone.splice(zone.indexOf(id),1);
-    if(zone===p.equip&&CARD_BY_ID[id].kind==='baiyin'&&p.hp<p.maxHp){p.hp++;event(s,'heal',{player:p.id,amount:1});note(s,`${p.name} 失去白银狮子，回复1点体力。`);}}
+    if(zone===p.equip&&CARD_BY_ID[id].kind==='baiyin'&&p.hp<p.maxHp){recordEquipmentCue(s,p,'baiyin');p.hp++;event(s,'heal',{player:p.id,amount:1});note(s,`${p.name} 失去白银狮子，回复1点体力。`);}}
   if(s.skillAutomation){
     const st=p.skillState??={used:{},marks:{},turn:{},gained:[],lost:[],faceDown:false,abolished:[]};
     if(equipment&&hasSkill(p,'枭姬')){st.turn.equipLossN=(st.turn.equipLossRev===s.rev?st.turn.equipLossN||0:0)+equipment;st.turn.equipLossRev=s.rev;for(let i=0;i<equipment;i++)s.rules.queue.push({type:'skillTask',owner:p.id,skill:'枭姬',info:{n:1}});}
-    if(beforeHand>0&&!p.hand.length&&hasSkill(p,'连营')){st.turn.lastLossRev=s.rev;s.rules.queue.push({type:'skillTask',owner:p.id,skill:'连营',info:{n:beforeHand,reason}});}
+    if(!prepaid&&beforeHand>0&&!p.hand.length&&hasSkill(p,'连营')){st.turn.lastLossRev=s.rev;s.rules.queue.push({type:'skillTask',owner:p.id,skill:'连营',info:{n:beforeHand,reason}});}
   }
 }
 export function effectiveKind(p,ids,requested=null) {

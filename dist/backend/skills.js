@@ -8,6 +8,7 @@ import {check,seat,alive,hasSkill,equipKind,distance,attackRange,cardAttackRange
 // All state changes run inside the engine transaction. Prompts are decisions,
 // never announcements pretending that a skill effect has been performed.
 import {ACTIVE_SKILLS,AUTOMATED_NAMES} from '../data/skill-support.js';
+import {phaseJobs} from './skill-windows.js';
 export {ACTIVE_SKILLS,AUTOMATED_NAMES};
 export const stateOf=p=>(p.skillState??={used:{},marks:{},turn:{},gained:[],lost:[],faceDown:false,abolished:[]});
 export function skillInput(s,p,name){
@@ -26,8 +27,10 @@ export function loseHp(s,p,n=1){p.hp-=n;event(s,'hp',{player:p.id,amount:-n});no
 function discard(s,p,ids,{hand=false}={}){check(ids.length>0&&new Set(ids).size===ids.length&&owns(p,ids),'请选择自己的有效材料');if(hand)check(ids.every(id=>p.hand.includes(id)),'请选择手牌');for(const zone of ['hand','equip'])cardMotion(s,ids.filter(id=>p[zone].includes(id)),{zone,owner:p.id},{zone:'discard'},{actor:p.id,publicFace:true});removeOwned(s,p,ids,{reason:'skill'});s.discard.push(...ids);stateOf(p).turn.discarded=(stateOf(p).turn.discarded||0)+ids.length;note(s,`${p.name} 为技能弃置 ${ids.map(cardLabel).join('、')}。`);}
 function moveToHand(s,p,ids){for(const id of ids){const zone=[s.pool,s.discard,s.deck].find(z=>z.includes(id));if(zone){cardMotion(s,[id],{zone:zone===s.pool?'pool':zone===s.discard?'discard':'deck'},{zone:'hand',owner:p.id},{actor:p.id});zone.splice(zone.indexOf(id),1);p.hand.push(id);}}}
 function giveCards(s,p,t,ids,zone='hand'){check(t.id!==p.id&&!t.dead,'请选择其他存活角色');const src=zone==='peek'?(s.peek[p.id]||[]):p.hand;check(ids.length&&new Set(ids).size===ids.length&&ids.every(id=>src.includes(id)),'请选择可分配的牌');cardMotion(s,ids,{zone,owner:p.id},{zone:'hand',owner:t.id},{actor:p.id});for(const id of ids)src.splice(src.indexOf(id),1);t.hand.push(...ids);note(s,`${p.name} 以技能交给 ${t.name} ${ids.length} 张牌。`);}
-function prompt(s,p,skill,stage,{choices=[{id:'yes',label:'发动'}],optional=true,targets=[],minTargets=0,maxTargets=minTargets,minCards=0,maxCards=minCards,zone='hand',info={},hint=''}={}){
-  if(p.dead)return;stateOf(p);s.skillPromptSeq=(s.skillPromptSeq||0)+1;s.rules.pending={kind:'skill',windowId:`${s.rev}:${s.skillPromptSeq}`,player:p.id,skill,stage,choices,optional,targetIds:targets,minTargets,maxTargets,minCards,maxCards,zone,hint,internal:info};
+function prompt(s,p,skill,stage,{choices=[{id:'yes',label:'发动'}],optional=true,targets=[],minTargets=0,maxTargets=minTargets,minCards=0,maxCards=minCards,zone='hand',info={},hint='',cardChoices=null}={}){
+  if(p.dead)return;const available=zone==='hand'?p.hand.length:zone==='both'?p.hand.length+p.equip.length:zone==='equip'?p.equip.length:zone==='peek'?(s.peek[p.id]||[]).length:Infinity;
+  if(optional&&!choices.some(c=>(c.minCards??minCards)<=available&&(c.minCards??minCards)<=(c.maxCards??maxCards)&&(c.minTargets??minTargets)<=targets.length&&(c.minTargets??minTargets)<=(c.maxTargets??maxTargets)))return;
+  stateOf(p);s.skillPromptSeq=(s.skillPromptSeq||0)+1;s.rules.pending={kind:'skill',windowId:`${s.rev}:${s.skillPromptSeq}`,player:p.id,skill,stage,choices,optional,targetIds:targets,minTargets,maxTargets,minCards,maxCards,zone,hint,internal:info,...(cardChoices?{cardChoices}:{})};
 }
 function drawEvent(p,n){return {type:'draw',target:p.id,n};}
 export function startSkills(s){
@@ -72,15 +75,16 @@ export function phaseSkills(s,p,phase){
     for(const name of ['闭月','据守','进趋','崩坏','罪论'])if(hasSkill(p,name))list.push(task(p,name));
     if(isJie(p)&&hasSkill(p,'观星')&&st.turn.guanxingAgain){st.turn.guanxingAgain=false;list.push(task(p,'观星'));}
   }
-  s.rules.queue.push(...list);
+  s.rules.queue.push(...phaseJobs(s,p,list,'start'));
 }
 export function leavePhaseSkills(s,p,phase){
   if(!s.skillAutomation)return [];const st=stateOf(p),jobs=[];
+  if(complete(s)&&st.turn.skipPhases?.includes(phase))return [];
   if(phase===3&&hasSkill(p,'庸肆')&&!(st.turn.damage||0))drawCards(s,p,Math.max(0,p.hp-p.hand.length));
   if(phase===3&&hasSkill(p,'掣政')){const out=alive(s).filter(t=>t.id!==p.id&&distance(s,t.id,p.id)>attackRange(t));if((st.turn.cards||0)<out.length&&out.some(t=>t.hand.length+t.equip.length+t.judge.length))jobs.push(task(p,'掣政','decision',{stage:'qizhi',optional:false,targets:out.filter(t=>t.hand.length+t.equip.length+t.judge.length).map(t=>t.id),minTargets:1}));}
   if(phase===4&&hasSkill(p,'伪帝')&&p.role==='lord'&&st.turn.phaseDiscards?.some(id=>s.discard.includes(id))&&livingTargets(s,p,t=>faction(t)==='群').length)jobs.push(task(p,'伪帝','decision',{stage:'weidiStart',data:{cards:st.turn.phaseDiscards.filter(id=>s.discard.includes(id))}}));
   if(phase===5){for(const t of s.players){const ts=stateOf(t);if(ts.shelter?.length){t.hand.push(...ts.shelter);ts.shelter=[];note(s,`${t.name} 取回谦逊暂存的手牌。`);}}}
-  return [...jobs,...completeLeave(s,p,phase)];
+  return phaseJobs(s,p,[...jobs,...completeLeave(s,p,phase)],'leave');
 }
 export function afterDamageSkills(s,{source,target,amount,card,cards,kind,color,useKey}){
   if(!s.skillAutomation)return;const p=seat(s,target),a=source?s.players.find(x=>x.id===source):null,info={source,target,amount,card,cards,kind,color};
@@ -123,9 +127,12 @@ export function processSkillTask(s,e){
     else{p.maxHp=Math.max(1,p.maxHp-1);p.hp=Math.min(p.hp,p.maxHp);if(name==='魂姿')st.gained.push('英姿','英魂');else if(name==='破势'){drawCards(s,p,Math.max(0,p.maxHp-p.hand.length));st.lost.push('决堰');st.gained.push('怀柔');}else{st.gained.push('观星');prompt(s,p,name,'reward',{optional:false,choices:[{id:'heal',label:'回复1点体力'},{id:'draw',label:'摸两张'}]});}}
     note(s,`${p.name} 觉醒「${name}」。`);return;
   }
-  if(e.stage==='mandatoryDiscard')return prompt(s,p,name,'discard',{optional:false,minCards:info.n,maxCards:info.n,zone:info.zone||'hand',info});
+  if(e.stage==='mandatoryDiscard'){const n=Math.min(info.n,p.hand.length+(info.zone==='both'?p.equip.length:0));if(n)return prompt(s,p,name,'discard',{optional:false,minCards:n,maxCards:n,zone:info.zone||'hand',info});return;}
   if(e.stage==='gift')return prompt(s,p,name,'gift',{info,zone:info.zone||'hand',maxCards:info.budget,minTargets:0,maxTargets:1,targets:livingTargets(s,p),choices:[{id:'give',label:'将所选交给目标'},{id:'keep',label:'完成分配，保留其余'}]});
-  if(e.stage==='decision'){if(info.stage==='luanwu'){const others=alive(s).filter(t=>t.id!==p.id),min=Math.min(...others.map(t=>distance(s,p.id,t.id)));info.targets=others.filter(t=>distance(s,p.id,t.id)===min).map(t=>t.id);}return prompt(s,p,name,info.stage,{...info,info:info.data||{}});}
+  if(e.stage==='decision'){
+    if(info.stage==='jushouDiscard'){const cards=p.hand.filter(id=>!CARD_MAP[CARD_BY_ID[id].kind].slot||!st.abolished.includes(CARD_MAP[CARD_BY_ID[id].kind].slot));if(!cards.length)return;return prompt(s,p,name,info.stage,{...info,cardChoices:cards,info:info.data||{}});}
+    if(info.stage==='luanwu'){const others=alive(s).filter(t=>t.id!==p.id),min=Math.min(...others.map(t=>distance(s,p.id,t.id)));info.targets=others.filter(t=>distance(s,p.id,t.id)===min).map(t=>t.id);}return prompt(s,p,name,info.stage,{...info,info:info.data||{}});
+  }
   if(e.stage==='haoshiGive')return prompt(s,p,name,'haoshiGive',{optional:false,targets:info.targets,minTargets:1,minCards:info.n,maxCards:info.n,info});
   if(e.stage==='applyLoss'){loseHp(s,p,1);return;}
   if(name==='诈降'){
@@ -139,7 +146,7 @@ export function processSkillTask(s,e){
   }
   if(name==='整论')return prompt(s,p,name,'replaceDraw');
   if(name==='遗礼')return prompt(s,p,name,'orange',{targets:livingTargets(s,p),minTargets:1,choices:[{id:'hp',label:'失去1体力，赠一橘'},...(st.marks.orange?[{id:'orange',label:'移去一橘，赠一橘'}]:[])]});
-  if(name==='突袭')return prompt(s,p,name,'stealDraw',{targets:livingTargets(s,p,t=>t.hand.length>0),minTargets:1,maxTargets:Math.min(2,livingTargets(s,p,t=>t.hand.length>0).length)});
+  if(name==='突袭'){const targets=livingTargets(s,p,t=>t.hand.length>0);if(!targets.length)return;return prompt(s,p,name,'stealDraw',{targets,minTargets:1,maxTargets:Math.min(2,targets.length)});}
   if(name==='裸衣')return prompt(s,p,name,isJie(p)?'revealBare':'bare');
   if(name==='洛神')return prompt(s,p,name,'judge');if(name==='雷击')return prompt(s,p,name,'leiji',{targets:livingTargets(s,p),minTargets:1});
   if(name==='观星')return prompt(s,p,name,'peek',{info:{n:isJie(p)?alive(s).length<4?3:5:Math.min(5,alive(s).length)}});
@@ -253,7 +260,7 @@ export function resolveSkill(s,p,a){
   else if(q.stage==='songwei'){const lord=seat(s,info.lord);drawCards(s,lord,1);}
   else if(q.stage==='haoshi'){st.turn.drawBonus=(st.turn.drawBonus||0)+2;st.turn.haoshi=true;}
   else if(q.stage==='haoshiGive')giveCards(s,p,t,ids);
-  else if(q.stage==='shuangxiong'){st.turn.replaceDraw=true;const cards=[topCard(s),topCard(s)].filter(Boolean);s.pool.push(...cards);prompt(s,p,name,'chooseShuang',{optional:false,zone:'public',info:{cards},choices:[{id:'take',label:'获得所选一张，另一张弃置'}],hint:'从结算区选择一张本次亮出的牌。'});}
+  else if(q.stage==='shuangxiong'){st.turn.replaceDraw=true;const cards=[topCard(s),topCard(s)].filter(Boolean);s.pool.push(...cards);if(cards.length)prompt(s,p,name,'chooseShuang',{optional:false,zone:'public',minCards:1,maxCards:1,cardChoices:cards,info:{cards},choices:[{id:'take',label:'获得所选一张，另一张弃置'}],hint:'选择一张本次亮出的牌。'});}
   else if(q.stage==='chooseShuang'){check(ids.length===1&&info.cards.includes(ids[0]),'选择一张双雄亮出的牌');moveToHand(s,p,ids);st.turn.shuangColor=red(CARD_BY_ID[ids[0]])?'red':'black';for(const id of info.cards.filter(id=>!ids.includes(id))){const at=s.pool.indexOf(id);if(at>=0){s.pool.splice(at,1);s.discard.push(id);}}}
   else if(q.stage==='jushou'){completeFlip(s,p);drawCards(s,p,4);s.rules.queue.unshift(task(p,name,'decision',{stage:'jushouDiscard',optional:false,minCards:1,maxCards:1,zone:'hand',choices:[{id:'discard',label:'弃置所选手牌；装备则直接装备'}]}));}
   else if(q.stage==='jushouDiscard'){const id=ids[0],def=CARD_MAP[CARD_BY_ID[id].kind];if(def.slot){check(!st.abolished.includes(def.slot),'此装备栏已废除');const old=p.equip.find(c=>CARD_MAP[CARD_BY_ID[c].kind].slot===def.slot);if(old)discard(s,p,[old]);p.hand.splice(p.hand.indexOf(id),1);p.equip.push(id);}else discard(s,p,ids,{hand:true});}

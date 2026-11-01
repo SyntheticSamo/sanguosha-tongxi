@@ -123,7 +123,7 @@ test('jijiang / hujia wait for real ally consent and consume the ally card once'
  let s=game('caocao');s.players[0].role='lord';s.players[2].general='simayi';s.players[2].skillState.lost=[];const a=s.players[1],ally=s.players[2],sha=give(s,a,'sha'),dodge=give(s,ally,'shan');s.turn=a.id;s=act(s,a.id,'use',{cards:[sha],target:'host'});s=skill(s,'护驾');assert.equal(s.rules.pending.kind,'skill');assert.equal(s.rules.pending.player,ally.id);s=act(s,ally.id,'skillResolve',{choice:'yes',cards:[dodge]});assert(s.discard.includes(dodge));assert.equal(s.players[0].hp,4);assert.equal(s.rules.pending,null);validateState(s);
 });
 test('schema2 migration keeps old games out of expanded skill automation',()=>{
- const s=game();s.schema=2;delete s.skillAutomation;const migrated=migrateState(s);assert.equal(migrated.schema,6);assert.equal(migrated.skillAutomation,false);validateState(migrated);
+ const s=game();s.schema=2;delete s.skillAutomation;const migrated=migrateState(s);assert.equal(migrated.schema,8);assert.equal(migrated.skillAutomation,false);validateState(migrated);
 });
 test('active jijiang validates and resolves an ally-supplied slash as the lord card',()=>{
  let s=game('liubei');s.players.forEach(p=>p.role=p.id==='host'?'lord':'rebel');const ally=s.players.find(p=>p.id!=='host'&&GENERAL_MAP[p.general].faction==='蜀'),target=s.players[1],sha=give(s,ally,'sha'),n=s.players[0].hand.length;s=skill(s,'激将',[],[target.id]);assert.equal(s.rules.pending.kind,'skill');assert.equal(s.rules.pending.player,ally.id);s=act(s,ally.id,'skillResolve',{choice:'yes',cards:[sha]});assert.equal(s.rules.pending.kind,'slash');assert.equal(s.players[0].hand.length,n);s=act(s,target.id,'pass');assert.equal(s.players[1].hp,3);assert(s.discard.includes(sha));validateState(s);

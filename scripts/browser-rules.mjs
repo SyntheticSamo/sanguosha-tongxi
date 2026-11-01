@@ -43,7 +43,7 @@ try{
  assert.equal(await host.locator('#target, #target2').count(),0);
  await pickTarget(host,foe);await host.locator(`[data-target-seat="${foe}"]`).click();assert.equal(await host.locator('[data-target-seat][aria-pressed=true]').count(),0);
  const self=host.locator('[data-target-seat=host]');await self.focus();await self.press('Enter');assert.equal(await self.getAttribute('aria-pressed'),'true');await self.press('Space');assert.equal(await self.getAttribute('aria-pressed'),'false');
- await pickTarget(host,foe);await host.locator(`#seats [data-card="${byKind('liannu')}"]`).click();assert.equal(await host.locator(`[data-target-seat="${foe}"]`).getAttribute('aria-pressed'),'true');assert.equal(await self.getAttribute('aria-pressed'),'false');
+ await pickTarget(host,foe);await host.locator(`#seats [data-card="${byKind('liannu')}"]`).click();assert.equal(await host.locator(`[data-target-seat="${foe}"]`).getAttribute('aria-pressed'),'true');assert.equal(await self.getAttribute('aria-pressed'),'false');await host.keyboard.press('Escape');
  await play(host,sha1,foe);await guest.locator('#response-panel [data-do=respond]').waitFor();await guest.screenshot({path:path.join(dest,'05-auto-response.png'),fullPage:true});
  await select(guest,dodge);await cmd(guest,'respond');await host.waitForFunction(()=>document.querySelector('#response-panel').hidden);assert((await host.locator(`[data-seat="${foe}"] .seat-hp`).textContent()).includes('4/4'));
  await play(host,wine,'host');assert((await host.locator('#range-info').textContent()).includes('酒 +1'));await play(host,sha2,foe);
@@ -54,12 +54,12 @@ try{
  await pickTarget(host,foe);await cmd(host,'tools');await host.locator('#correction-controls summary').click();await host.locator('#correction-op').selectOption('hp');await host.locator('#correction-value').fill('3');await host.locator('#correction-reason').fill('测试手动纠正');let n=await rev(host);await cmd(host,'correct');await waitRev(host,n+1);await guest.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('3/4'),foe);await cmd(host,'undo');await guest.waitForFunction(id=>document.querySelector(`[data-seat="${id}"] .seat-hp`).textContent.includes('2/4'),foe);await host.locator('#tools-dialog [data-close]').click();
  await host.screenshot({path:path.join(dest,'06-auto-table.png'),fullPage:true});assert.deepEqual(errors,[]);
  // Ordered targets now come only from player frames, including both trick flows.
- await select(host,chain);await cmd(host,'clear-targets');await pickTarget(host,foe);await pickTarget(host,'host');
+ await select(host,chain);await pickTarget(host,foe);await pickTarget(host,'host');
  assert.equal(await host.locator(`[data-target-seat="${foe}"] .target-index`).textContent(),'1');assert.equal(await host.locator('[data-target-seat=host] .target-index').textContent(),'2');
  await host.locator(`[data-target-seat="${foe}"]`).click();assert.equal(await self.locator('.target-index').textContent(),'1');await pickTarget(host,foe);
  let turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await passBoth(host,guest);
  assert.equal(await host.locator('[data-seat=host] [aria-label="铁索横置"]').count(),1);assert.equal(await host.locator(`[data-seat="${foe}"] [aria-label="铁索横置"]`).count(),1);
- await select(host,borrow);await cmd(host,'clear-targets');await pickTarget(host,foe);await pickTarget(host,'host');await host.screenshot({path:path.join(dest,'07-click-targets.png'),fullPage:true});
+ await host.locator('[data-ui=clear]').click();await select(host,borrow);await pickTarget(host,foe);await pickTarget(host,'host');await host.screenshot({path:path.join(dest,'07-click-targets.png'),fullPage:true});
  turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await guest.waitForFunction(()=>document.querySelector('#response-panel').textContent.includes('借刀'));
  turnRev=await rev(guest);await cmd(guest,'pass');await waitRev(host,turnRev+1);assert.equal(await host.locator(`#hand [data-card="${byKind('qilin')}"]`).count(),1);assert.deepEqual(errors,[]);
  console.log('PASS: player-frame targeting, deselection, keyboard activation, nested equipment controls, ordered chain and borrowed-sword targets, auto rules and reconnect.');

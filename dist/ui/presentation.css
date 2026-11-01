@@ -1,0 +1,55 @@
+/* Presentation layers: table/chain 0, effects 1, card and decision controls above. */
+.table-arena{isolation:isolate}
+#relation-lines{z-index:0;overflow:hidden}
+#relation-lines .metal-chain{fill:none;stroke:url(#chain-metal);stroke-width:1.2;opacity:.2;filter:none;pointer-events:none}
+#relation-lines .metal-chain.highlighted{opacity:.55}
+#relation-lines .metal-chain.transmitting{opacity:.85;filter:none;animation:none}
+#relation-lines .metal-chain ellipse{fill:none;vector-effect:non-scaling-stroke}
+.chain-access{pointer-events:none}.chain-access button{pointer-events:auto}
+.chain-inspect{opacity:.5;z-index:3}
+.cinema-cue{position:absolute;width:82px;height:82px;z-index:1;pointer-events:none;contain:layout style;--ink:#d6c39b;color:var(--ink)}
+.cinema-cue svg{width:100%;height:100%;overflow:visible;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+.cinema-cue .fine{stroke-width:1;opacity:.6}.equipment-cue{width:49px;height:49px}
+.cinema-fire,.cinema-feather{--ink:#edac66}.cinema-thunder,.cinema-charge{--ink:#b5cfe7}
+.cinema-heal{--ink:#b9d39d}.cinema-shield,.cinema-ice,.cinema-oracle{--ink:#c5dcd3}
+.cinema-dismantle,.cinema-force,.cinema-slash{--ink:#e1ab8b}.cinema-grain,.cinema-vine{--ink:#c5c88b}
+#game .table-center #center-plays{width:var(--center-width,70vw);max-width:none;transform:translateX(var(--center-shift,0px));justify-content:safe center;gap:0;overflow-x:hidden;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#b4bea373 transparent;flex-shrink:0;padding-left:10px;padding-right:10px}
+#game .table-center #center-plays.history-overflow{overflow-x:auto;justify-content:flex-start}
+#game .table-center #center-plays .center-card{margin:0;flex-shrink:0}
+#game .table-center #center-plays .center-card+.center-card{margin-left:calc(-1 * var(--card-overlap,8px))}
+#game #center-history-controls{display:flex;align-items:center;justify-content:center;gap:12px;min-height:0;pointer-events:auto;white-space:nowrap}
+#game #center-history-controls:empty{display:none}
+#game #center-history-controls button{font-size:9px;padding:1px 4px;min-height:18px;opacity:.65}
+#game .draft-card{border-style:dashed;box-shadow:none;opacity:.78}
+#game .chain-staged .playing-card{outline:1px dashed #d4c798}
+#game .counter-collision{pointer-events:none;z-index:3}
+#game .center-card.duel-response.duel-origin{border-bottom-color:#aebecf}
+#game .center-card.duel-response.duel-opponent{border-bottom-color:#d5bc8c}
+@media(max-width:760px){.cinema-cue{width:58px;height:58px}#game #center-history-controls button{font-size:7px;min-height:14px}}
+@media(max-height:500px) and (orientation:landscape){.cinema-cue{width:40px;height:40px}#game #center-history-controls button{min-height:10px;font-size:6px}}
+[data-motion=reduce] .cinema-cue{display:none}
+@media(prefers-reduced-motion:reduce){[data-motion=system] .cinema-cue{display:none}}
+
+.pending-display{visibility:hidden!important;pointer-events:none!important}.market-fan .effect-choice{animation:none!important}
+
+#game .counter-collision{position:absolute;width:60px;height:90px;left:50%;top:50%;background:none}
+.counter-paper,.counter-rise{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;background:#eee8c9;border:2px solid #b6b289;border-radius:4px;padding:3px;color:#23483c;overflow:hidden}
+.counter-paper.left{clip-path:polygon(0 0,58% 0,46% 46%,57% 57%,43% 100%,0 100%)}
+.counter-paper.right{clip-path:polygon(58% 0,100% 0,100% 100%,43% 100%,57% 57%,46% 46%)}
+.counter-rise .card-name,.counter-paper .card-name{font-size:23px;writing-mode:vertical-rl;max-height:65px}.counter-rise .card-meta,.counter-paper .card-meta{font-size:9px;align-self:flex-start}.counter-rise .card-category,.counter-paper .card-category{font-size:7px;margin-top:auto}
+@media(max-height:500px) and (orientation:landscape){#game .counter-collision{width:25px;height:37px}.counter-rise .card-name,.counter-paper .card-name{font-size:11px;max-height:25px}.counter-rise .card-meta,.counter-paper .card-meta{font-size:5px}.counter-rise .card-category,.counter-paper .card-category{display:none}}
+
+.seat-flags button.status-chip{min-height:0;min-width:0;padding:0 3px;font:inherit;line-height:inherit;color:inherit;background:transparent;cursor:pointer}
+
+.phase-cell.blocked-phase{position:relative}.phase-cell.blocked-phase::after{content:'╳';position:absolute;inset:0;display:grid;place-items:center;color:#deb79e;font-size:17px;pointer-events:none}
+.pindian-result .effect-choice{animation:pindian-unveil .35s ease-out both!important;animation-delay:0s!important;transform-origin:center}
+@keyframes pindian-unveil{from{transform:perspective(400px) rotateY(85deg);opacity:.2}to{transform:perspective(400px) rotateY(0deg);opacity:1}}
+[data-motion=reduce] .pindian-result .effect-choice{animation:none!important}
+
+.same-window .pindian-result .effect-choice{animation:none!important}
+
+.gear-slot.armor-ignored{opacity:.5;outline:1px dashed #c5b7a2}.gear-slot.armor-ignored::after{content:"╱";position:absolute;inset:0;display:grid;place-items:center;color:#dfbea6;font-size:24px;pointer-events:none}
+
+/* Connection flow is a single task column, including on wide screens. */
+#connect-dialog .connection-columns{display:block}#connect-dialog .connect-intro{font-size:12px;margin:10px 0}#connect-dialog label{font-size:12px}#connect-dialog .network-options{margin:10px 0;font-size:11px}#connect-dialog .network-options summary{cursor:pointer;min-height:28px}#connect-dialog .signal-fallback{font-size:11px;margin:9px 0}#connect-dialog .signal-fallback summary{cursor:pointer;min-height:25px}#connect-dialog #offer-link{font-family:monospace;text-overflow:ellipsis}#connect-dialog #answer-feedback{font-size:12px;color:#376247;min-height:0;margin:4px 0}#connect-dialog #answer-feedback:empty{display:none}#connect-dialog #guest-name-label{max-width:300px}#connect-dialog[data-role=host] #guest-name-label{display:none}#connect-dialog #peer-status-list{white-space:pre-line;font-size:12px;margin:8px 0}#connect-dialog textarea{resize:vertical;overflow-wrap:anywhere;font:11px/1.5 monospace}#connect-dialog .connection-steps{margin:12px 0}#connect-dialog #offer-ready,#connect-dialog #answer-ready{margin-top:12px;padding-top:8px;border-top:1px solid var(--line)}
+@media(max-width:760px){#connect-dialog{padding:17px;width:calc(100vw - 24px);max-height:92dvh}#connect-dialog h2{font-size:23px}#connect-dialog .small{min-height:38px}#connect-dialog .connection-steps li{font-size:9px}}

@@ -1,6 +1,6 @@
 {
   "name": "sanguosha-tongxi",
-  "version": "6.0.0",
+  "version": "8.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,6 +17,16 @@
     "test:browser:complete-skills": "node scripts/browser-complete-skills.mjs",
     "test:browser:complete-sync": "node scripts/browser-complete-sync.mjs",
     "test:browser:tactile": "node scripts/browser-tactile.mjs",
-    "test:browser:experience": "node scripts/browser-experience.mjs"
+    "test:browser:experience": "node scripts/browser-experience.mjs",
+    "test:browser:skill-windows": "node scripts/browser-skill-windows.mjs",
+    "audit:skills": "node scripts/audit-skill-timing.mjs",
+    "test:browser:round-seven": "node scripts/browser-round-seven.mjs",
+    "test:browser:round-six": "node scripts/browser-round-six.mjs",
+    "audit:presentations": "node scripts/audit-presentations.mjs",
+    "review:presentations": "node scripts/presentation-review.mjs",
+    "test:browser:connect": "node scripts/browser-connect-ux.mjs",
+    "test:browser:round-eight": "node scripts/browser-round-eight.mjs",
+    "audit:cards": "node scripts/audit-card-rules.mjs",
+    "test:browser": "node scripts/browser-all.mjs"
   }
 }

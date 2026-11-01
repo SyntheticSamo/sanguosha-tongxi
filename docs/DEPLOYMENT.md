@@ -33,6 +33,6 @@ PR 只运行检查，不部署。部署作业只使用 GitHub 自动提供、作
 
 任意 HTTPS 静态托管上传 `dist/` 即可。不能通过 `file://` 打开模块与 Worker；本地调试运行 `node scripts/serve.mjs`。
 
-旧 Sites 地址：https://sanguosha-tongxi-andy.glass-peacock.chatgpt.site 。独立托管不修改、删除或更新旧站，旧网址不自动跳转。`.openai/hosting.json` 仅保留历史 Sites 项目标识，不参与 GitHub Pages 的运行或发布。
+旧 Sites 地址：https://sanguosha-tongxi-andy.glass-peacock.chatgpt.site 。独立托管不修改、删除或更新旧站，旧网址不自动跳转。旧Sites发布元数据已从仓库移除；当前GitHub Pages工作流只发布 `dist/`，不需要旧服务的配置或凭据。
 
 自有域名可后续在 GitHub Pages 设置中绑定，并按 GitHub 返回的记录配置 DNS；仅换域名无需增加游戏后端。

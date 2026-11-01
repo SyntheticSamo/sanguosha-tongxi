@@ -1,16 +1,18 @@
 import {experience,prepareBlindChoice,projectBlindChoice,validateInteraction} from './interaction.js';
 import {storedCards,settleWood,validateWood} from './wood.js';
-import {tactile,validateFlow} from './flow.js';
+import {tactile,validateFlow,markDrawCompleted,phaseToken} from './flow.js';
+import {projectOpportunities} from './skill-windows.js';
+import {boardMovePairs} from './board-moves.js';
 import { DECK, CARD_BY_ID, CARD_MAP, cardLabel, deckFor } from '../data/cards.js';
 import { GENERAL_MAP, ROLES, PHASES } from '../data/generals.js';
-import { freshRules, ruleAction, advancePhase, cancelResolution,pump,canCounter } from './rules.js';
+import { freshRules, ruleAction, advancePhase, cancelResolution,pump,canCounter,recoverPhaseOpportunity,repairSaveWindow } from './rules.js';
 import {startSkills,stateOf} from './skills.js';
 import { randomIndex, shuffle, note as log, drawCards as draw, event } from './primitives.js';
 export { randomIndex, shuffle } from './primitives.js';
 
-import {completePresentation,projectPresentation,validatePresentation,materialVisible,settleHiddenMaterials} from './presentation.js';
+import {completePresentation,projectPresentation,validatePresentation,validPresentationStep,projectPresentationStep,materialVisible,settleHiddenMaterials,displayTurn} from './presentation.js';
 import {specialCards,projectCompleteState,validateCompleteState,publicSkillFields} from './complete-skills.js';
-export const SCHEMA = 6;
+export const SCHEMA = 8;
 const assert = (ok,message) => { if(!ok) throw new Error(message); };
 const text = (v,max=40) => String(v??'').trim().slice(0,max);
 const int = (v,min,max) => { assert(Number.isInteger(v)&&v>=min&&v<=max,'数值超出允许范围'); return v; };
@@ -107,6 +109,14 @@ function reduceState(original,actorId,action) {
     }
     case 'finishOpening':{live();assert(host&&s.flow?.opening&&action.windowId===s.flow.opening.id,'开局展示已结束或没有权限');delete s.flow.opening;startSkills(s);break;}
     case 'draw': {live();assert(!me.dead,'阵亡角色不能摸牌');const n=int(action.n,1,20);const before=me.hand.length;draw(s,me,n);log(s,`${me.name} 摸了 ${me.hand.length-before} 张牌。`);break;}
+    case 'practiceGain':{
+      live();assert(s.practice&&!me.dead,'仅限本地演练中的存活角色');
+      assert(!s.rules.pending&&!s.rules.queue.some(e=>!['phaseGate','completePhaseBody','drawPhase'].includes(e.type))&&!Object.values(s.peek).some(z=>z.length),'请先完成当前结算或私看');
+      assert(CARD_MAP[action.kind]&&deckFor(s.deckSet,s.ex).some(c=>c.kind===action.kind),'本桌未启用此牌');
+      const source=[s.deck,s.discard].find(z=>z.some(id=>CARD_BY_ID[id].kind===action.kind&&materialVisible(s,id,me.id)));
+      assert(source,'抽牌堆和弃牌堆已无可取的该牌');const id=source.find(id=>CARD_BY_ID[id].kind===action.kind&&materialVisible(s,id,me.id));source.splice(source.indexOf(id),1);me.hand.push(id);
+      log(s,`演练：${me.name} 获得 ${cardLabel(id)}。`);break;
+    }
     case 'play': {live();assert(!me.dead,'阵亡角色不能出牌');const ids=cards();const p=action.target?target(action.target):null;
       for(const id of ids)assert(me.hand.includes(id),'只能打出手牌');take(me.hand,ids);s.pool.push(...ids);
       log(s,`${me.name} ${action.as?`以「${text(action.as,20)}」`:'使用 / 打出'} ${ids.map(cardLabel).join('、')}${p?` → ${p.name}`:''}。请手动完成效果。`);break;}
@@ -135,11 +145,12 @@ function reduceState(original,actorId,action) {
       log(s,`${target(s.turn).name} · ${PHASES[s.phase]}阶段。${s.phase===2?'请自行点击摸牌。':''}`);break;}
     case 'role':live();me.roleOpen=true;log(s,`${me.name} 亮明身份：${ROLES[me.role]}。`);break;
     case 'correct':{
+      if(s.flow)delete s.flow.drawCompleted;
       live();assert(host,'仅房主可纠正');const reason=text(action.reason,120);assert(reason,'请填写纠正原因');const p=target(action.target);
-      if(action.op==='cancel')cancelResolution(s);
+      if(action.op==='cancel'){delete s.flow?.skillWindow;cancelResolution(s);}
       else if(action.op==='hp')p.hp=int(action.value,-20,p.maxHp);
       else if(action.op==='maxHp'){p.maxHp=int(action.value,1,20);p.hp=Math.min(p.hp,p.maxHp);}
-      else if(action.op==='phase'){assert(!s.rules.pending,'请先中止当前响应');s.phase=int(action.value,0,5);s.turn=p.id;if(s.flow){delete s.flow.draw;s.flow.paused=true;}}
+      else if(action.op==='phase'){assert(!s.rules.pending,'请先中止当前响应');s.phase=int(action.value,0,5);s.turn=p.id;if(s.flow){delete s.flow.draw;delete s.flow.skillWindow;s.flow.needsContinue=phaseToken(s);s.rules.queue=s.rules.queue.filter(e=>!['phaseGate','completePhaseBody','completePhaseSkills','phaseAdvance','drawPhase'].includes(e.type)&&!e.phaseOffer);s.flow.paused=true;}}
       else if(action.op==='chain'){p.chained=!p.chained;if(p.chained&&experience(s)){s.chainOrigins??={};s.chainOrigins[p.id]={kind:null,actor:me.id,source:'房主纠正'};}}
       else if(action.op==='counter'){s.rules.slash=0;s.rules.slashPlayed=0;s.rules.wineUsed=false;s.rules.drank=0;}
       else if(action.op==='draw')draw(s,p,int(action.value,1,20));
@@ -174,6 +185,9 @@ export function validateState(s){
       assert(e.amount===undefined||Number.isInteger(e.amount)&&Math.abs(e.amount)<=40,'结算反馈数值无效');
       assert(e.count===undefined||Number.isInteger(e.count)&&e.count>=0&&e.count<=160,'结算反馈张数无效');
       assert(e.cardKind===undefined||typeof e.cardKind==='string'&&Object.hasOwn(CARD_MAP,e.cardKind),'结算反馈牌名无效');
+      assert([e.hpBefore,e.hpAfter].every(v=>v===undefined||Number.isSafeInteger(v)&&Math.abs(v)<=10000),'体力展示无效');
+      assert(validPresentationStep(e.presentation),'结算展示顺序无效');
+      assert(e.recordId===undefined||typeof e.recordId==='string'&&/^\d+:\d+$/.test(e.recordId),'伤害展示关联无效');
       assert(e.targets===undefined||Array.isArray(e.targets)&&e.targets.length<=8&&e.targets.every(id=>s.players.some(p=>p.id===id)),'结算反馈目标无效');
     }
     assert(new Set(s.events.map(e=>e.id)).size===s.events.length,'结算反馈编号重复');
@@ -199,16 +213,19 @@ export function project(s,seat){
   assert(s.players.some(p=>p.id===seat),'席位不存在');
   const q=structuredClone(s.rules.pending);if(q?.kind==='pindian')q.selected=Object.keys(s.rules.commits); // Never publish concealed card IDs.
   if(q?.kind==='skill'){if(q.player===seat&&q.internal?.viewCards)q.privateView=[...q.internal.viewCards];delete q.internal;if(q.stage?.startsWith('complete:')&&q.player!==seat){q.cardChoices=[];q.choices=[];delete q.cardTargets;q.stage='complete:waiting';q.hint='等待对应玩家完成技能选择';q.minCards=q.maxCards=q.minTargets=q.maxTargets=0;q.targetIds=[];}}
+  if(q?.kind==='skill'&&q.player!==seat&&q.zone!=='public'&&q.cardChoices)q.cardChoices=[];
   if(q?.kind==='judge')delete q.skillInfo;if(q?.kind==='judgeAwait')delete q.internal;
+  if(q?.kind==='save'&&experience(s)){delete q.saviors;delete q.index;}
   if(q?.kind==='counter'&&experience(s)){q.canRespond=canCounter(s,s.players.find(p=>p.id===seat));q.hasPassed=q.passed.includes(seat);q.showNotice=q.effect.target===seat;delete q.players;delete q.passed;}
   projectBlindChoice(s,q,seat);
   if(q){const scrub=value=>Array.isArray(value)?value.filter(v=>typeof v!=='string'||materialVisible(s,v,seat)).map(scrub):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([k,v])=>!['skillKey','useKey','skillInfo','internal'].includes(k)&&(typeof v!=='string'||materialVisible(s,v,seat))).map(([k,v])=>[k,scrub(v)])):value;const safe=scrub(q);for(const key of Object.keys(q))delete q[key];Object.assign(q,safe);}
   return {tableExperience:!!s.tableExperience,schema:SCHEMA,roomId:s.roomId,hostId:s.hostId,rev:s.rev,status:s.status,size:s.size,ex:s.ex,practice:s.practice,
-    interactionMode:s.interactionMode||'classic',equipmentAutomation:!!s.equipmentAutomation,flow:{needsContinue:s.flow?.needsContinue||null,paused:!!s.flow?.paused,...(s.flow?.opening?{opening:{id:s.flow.opening.id,duration:s.flow.opening.duration}}:{}),...(s.flow?.draw?{draw:{id:s.flow.draw.id,player:s.flow.draw.player,remaining:s.flow.draw.remaining}}:{})},mode:s.mode,deckSet:s.deckSet,selectionMode:s.selectionMode,skillAutomation:!!s.skillAutomation,completeSkills:!!s.completeSkills,generalPacks:[...s.generalPacks],choices:[...(s.choices[seat]||[])],delayKinds:{...s.delayKinds},
+    interactionMode:s.interactionMode||'classic',equipmentAutomation:!!s.equipmentAutomation,flow:{drawCompleted:s.flow?.drawCompleted?{...s.flow.drawCompleted}:null,skillWindow:projectOpportunities(s,seat),needsContinue:s.flow?.needsContinue||null,paused:!!s.flow?.paused,...(s.flow?.opening?{opening:{id:s.flow.opening.id,duration:s.flow.opening.duration}}:{}),...(s.flow?.draw?{draw:{id:s.flow.draw.id,player:s.flow.draw.player,remaining:s.flow.draw.remaining}}:{})},mode:s.mode,deckSet:s.deckSet,selectionMode:s.selectionMode,skillAutomation:!!s.skillAutomation,completeSkills:!!s.completeSkills,generalPacks:[...s.generalPacks],choices:[...(s.choices[seat]||[])],delayKinds:{...s.delayKinds},
+    ...(s.practice?{practiceCards:Object.fromEntries(Object.keys(CARD_MAP).map(kind=>[kind,[...s.deck,...s.discard].filter(id=>CARD_BY_ID[id].kind===kind&&materialVisible(s,id,seat)).length]))}:{}),
     ...projectPresentation(s,seat),pending:q,counters:{slash:s.rules.slash,wineUsed:s.rules.wineUsed,drank:s.rules.drank},lastResult:structuredClone(s.rules.lastResult),
     turn:s.turn,phase:s.phase,round:s.round,winner:s.winner,deckCount:s.deck.length,discard:[...s.discard],pool:s.pool.filter(id=>materialVisible(s,id,seat)),poolCount:s.pool.length,
     peek:[...(s.peek[seat]||[])],logs:structuredClone(s.logs),you:seat,
-    events:(s.events||[]).map(e=>({id:e.id,rev:e.rev,type:e.type,player:e.player,source:e.source,amount:e.amount,count:e.count,nature:e.nature,cardKind:CARD_MAP[e.cardKind]?e.cardKind:undefined,targets:Array.isArray(e.targets)?e.targets.filter(id=>s.players.some(p=>p.id===id)):undefined})),
+    events:(s.events||[]).map(e=>({id:e.id,rev:e.rev,presentation:projectPresentationStep(e.presentation),type:e.type,player:e.player,source:e.source,amount:e.amount,hpBefore:e.hpBefore,hpAfter:e.hpAfter,count:e.count,nature:e.nature,chain:!!e.chain,recordId:typeof e.recordId==='string'&&/^\d+:\d+$/.test(e.recordId)?e.recordId:undefined,cardKind:CARD_MAP[e.cardKind]?e.cardKind:undefined,targets:Array.isArray(e.targets)?e.targets.filter(id=>s.players.some(p=>p.id===id)):undefined})),
     phaseState:{extraTurn:!!s.completeSkills&&!!s.extraTurnActive,skipDraw:!!s.rules.skipDraw,skipPlay:!!s.rules.skipPlay,slashPlayed:s.rules.slashPlayed||0},
     players:s.players.map(p=>({...((p.id===seat)?{autoAdvanceEnabled:p.autoAdvanceEnabled!==false}:{}),id:p.id,name:p.name,general:p.general,hp:p.hp,maxHp:p.maxHp,dead:p.dead,chained:!!p.chained,
       role:p.id===seat||p.roleOpen||s.status==='finished'?p.role:null,roleOpen:p.roleOpen,
@@ -221,7 +238,18 @@ export function migrateState(input){
   if(s?.schema===3){s.schema=4;s.completeSkills=false;}
   if(s?.schema===4){s.schema=5;s.interactionMode='classic';s.equipmentAutomation=false;s.flow={paused:false};}
   if(s?.schema===5){s.schema=6;s.tableExperience=s.mode==='auto'&&s.interactionMode==='tactile';for(const p of s.players)p.autoAdvanceEnabled=p.id===s.turn?!s.flow?.paused:true;if(s.rules.pending?.kind==='judge'&&s.tableExperience)s.flow.needsContinue=`${s.skillTurnNo||0}:${s.turn}:${s.phase}`;prepareBlindChoice(s,s.rules.pending);}
-  validateState(s);if(experience(s)&&s.rules.pending?.kind==='counter'){pump(s);validateState(s);}return s;
+  if(s?.schema===6){s.schema=7;
+    const q=s.rules.pending;
+    if(q?.kind==='skill'&&q.skill==='移牌'&&q.stage?.startsWith('complete:')){
+      const pairs=boardMovePairs(s),cards=Object.keys(pairs).filter(id=>pairs[id].length);q.optional=true;q.cardTargets=pairs;q.cardChoices=cards;q.internal??={};q.internal.allowedCards=cards;q.targetIds=[...new Set(cards.flatMap(id=>pairs[id]))];
+      if(!cards.length){s.rules.pending=null;pump(s);}
+    }
+    recoverPhaseOpportunity(s);
+    if(!s.rules.pending&&s.rules.queue.length)pump(s);
+  }
+  if(s?.schema===7){s.schema=8;for(const m of Object.values(s.rules.privateChoices||{}))m.readyAt=0;s.turnLedger=structuredClone(s.centerPlays||[]);s.displayTurnId=displayTurn(s);for(const p of [...s.turnLedger,...(s.centerPlays||[])])p.turnId=s.displayTurnId;}
+  if(s?.schema===8&&s.displayTurnId===`${s.skillTurnNo||0}:${s.turn}`){s.displayTurnId=displayTurn(s);for(const p of [...(s.turnLedger||[]),...(s.centerPlays||[])])p.turnId=s.displayTurnId;}
+  validateState(s);markDrawCompleted(s);if(experience(s)&&['counter','save'].includes(s.rules.pending?.kind)){repairSaveWindow(s);pump(s);validateState(s);}return s;
 }
 import {hasSkill as hasSkillCompat} from './primitives.js';
 import {handLimit as handLimitCompat} from './skills.js';

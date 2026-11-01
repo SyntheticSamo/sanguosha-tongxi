@@ -1,8 +1,10 @@
 import {settleWood,storedCards} from './wood.js';
 import {GENERAL_MAP,GENERALS} from '../data/generals.js';
 import {CARD_BY_ID,CARD_MAP,cardLabel,red} from '../data/cards.js';
-import {check,seat,alive,hasSkill,drawCards,removeOwned,topCard,note,event,distance,attackRange,cardRedFor,cardSuitFor,randomIndex,shuffle,skillGeneral} from './primitives.js';
+import {check,seat,alive,hasSkill,drawCards,removeOwned,topCard,note,event,distance,attackRange,cardDistance,cardAttackRange,cardRedFor,cardSuitFor,randomIndex,shuffle,skillGeneral} from './primitives.js';
 import {cardMotion,recordPlay} from './presentation.js';
+import {phaseJobs} from './skill-windows.js';
+import {boardMoveAdvice,boardMovePairs} from './board-moves.js';
 
 // These handlers belong to the authoritative transaction, not the animation queue.
 export const complete=s=>!!s.completeSkills&&!!s.skillAutomation;
@@ -15,6 +17,7 @@ const job=(p,skill,step='offer',data={})=>({type:'completeSkill',owner:p.id,skil
 const enqueue=(s,...jobs)=>s.rules.queue.unshift(...jobs.filter(Boolean));
 const option=(id,label,extra={})=>({id,label,...extra});
 function ask(s,p,skill,step,{options=[option('yes','发动')],optional=true,cards=[],targets=[],minCards=0,maxCards=minCards,minTargets=0,maxTargets=minTargets,hint='',data={},cardTargets=null}={}){
+  if(optional&&!options.some(c=>(c.minCards??minCards)<=cards.length&&(c.minCards??minCards)<=(c.maxCards??maxCards)&&(c.minTargets??minTargets)<=targets.length&&(c.minTargets??minTargets)<=(c.maxTargets??maxTargets)))return;
   s.skillPromptSeq=(s.skillPromptSeq||0)+1;
   s.rules.pending={kind:'skill',windowId:`${s.rev}:${s.skillPromptSeq}`,player:p.id,skill,stage:`complete:${step}`,choices:options,optional,zone:'public',minCards,maxCards,minTargets,maxTargets,targetIds:targets,hint,internal:{...data,allowedCards:[...cards]},cardChoices:[...cards],...(cardTargets?{cardTargets}:{})};
 }
@@ -74,12 +77,13 @@ export function observeCompleteMoves(s){
   }
   for(const [owner,ids]of gains){const p=seat(s,owner);if(hasSkill(p,'清俭')&&!(s.turn===owner&&s.phase===2)&&!cs(p).used['清俭'])jobs.push(job(p,'清俭','offer',{cards:ids}));}
   for(const p of alive(s).filter(t=>hasSkill(t,'良姻'))){if(outside.length)jobs.push(job(p,'良姻','outside'));if(inside.length)jobs.push(job(p,'良姻','inside'));}
-  s.rules.queue.push(...jobs);
+  const gate=s.rules.queue.findIndex(e=>e.type==='phaseGate');if(gate>=0)s.rules.queue.splice(gate,0,...jobs);else s.rules.queue.push(...jobs);
 }
 
 export function completePhase(s,p,phase,afterAvatar=false){
   if(!complete(s))return;const st=cs(p),jobs=[];
-  if(phase===0&&hasSkill(p,'化身')&&!afterAvatar){if(st.avatar)s.rules.queue.push(job(p,'化身'));s.rules.queue.push({type:'completePhaseSkills',owner:p.id,phase});return;}
+  if(phase===2&&s.rules.skipDraw||phase===3&&s.rules.skipPlay){st.turn.skipPhases??=[];if(!st.turn.skipPhases.includes(phase))st.turn.skipPhases.push(phase);return;}
+  if(phase===0&&hasSkill(p,'化身')&&!afterAvatar){if(st.avatar)s.rules.queue.push(...phaseJobs(s,p,[job(p,'化身')],'before'));s.rules.queue.push({type:'completePhaseSkills',owner:p.id,phase});return;}
   if(phase===0){
     delete st.marks.substitute;
     if(st.turn.bonusJizhi)delete st.turn.bonusJizhi;
@@ -96,7 +100,7 @@ export function completePhase(s,p,phase,afterAvatar=false){
     if(hasSkill(p,'镇骨'))jobs.push(job(p,'镇骨'));
     if(hasSkill(p,'箜声')&&special(p,'song').length)jobs.push(job(p,'箜声','return'));
   }
-  s.rules.queue.push(...jobs);
+  s.rules.queue.push(...phaseJobs(s,p,jobs,'before'));
 }
 export function completeLeave(s,p,phase){
   if(!complete(s))return [];const st=cs(p),jobs=[];
@@ -196,8 +200,8 @@ export function processComplete(s,e){
   if(n==='屯田')return prompt();
   if(n==='天香')return prompt({cards:hand.filter(id=>suit(p,id)==='H'),minCards:1,targets:other,minTargets:1,options:[option('damage','转为1点伤害，之后摸已损失体力张牌'),option('loss','令其失去1点体力并获得弃牌')],hint:'弃红桃手牌并防止原伤害'});
   if(n==='流离'){
-    const targets=living(s,p,t=>t.id!==d.effect.source&&!d.effect.redirected?.includes(t.id)&&distance(s,p.id,t.id)<=attackRange(p));
-    if(!targets.length){enqueue(s,d.effect);return;}return prompt({cards:both,minCards:1,targets,minTargets:1,hint:'弃一张牌，将杀转给攻击范围内的其他角色'});
+    const pairs=Object.fromEntries(both.map(id=>[id,living(s,p,t=>t.id!==d.effect.source&&!d.effect.redirected?.includes(t.id)&&!(hasSkill(t,'空城')&&!t.hand.length)&&cardDistance(s,p,t,[id])<=cardAttackRange(s,p,[id]))])),cards=both.filter(id=>pairs[id].length),targets=[...new Set(cards.flatMap(id=>pairs[id]))];
+    if(!targets.length){enqueue(s,d.effect);return;}return prompt({cards,minCards:1,targets,cardTargets:pairs,minTargets:1,hint:'弃一张牌，将杀转给支付材料后仍在攻击范围内的角色'});
   }
   if(n==='谦逊')return prompt({hint:'暂存全部手牌，回合结束取回'});
   if(n==='往烈')return prompt({hint:'使此牌不能被响应；本回合之后不能再使用牌'});
@@ -215,12 +219,12 @@ export function processComplete(s,e){
   if(n==='再起选择')return prompt({options:[option('draw','自己摸一张'),option('heal','令孟获回复1点体力')],optional:false});
   if(n==='固政'){const cards=d.cards.filter(id=>s.discard.includes(id));if(!cards.length)return;return prompt({cards,minCards:1,hint:'选择一张返还弃牌者，其余弃牌由你获得'});}
   if(n==='溃诛')return prompt({targets:all,minTargets:1,maxTargets:all.length,options:[option('draw',`至多${d.n}人各摸一张`),option('damage',`对体力值之和为${d.n}的角色各造成1伤害`)]});
-  if(n==='神速')return prompt({cards:step==='3'?both.filter(id=>CARD_MAP[CARD_BY_ID[id].kind].slot):[],minCards:step==='3'?1:0,targets:other,minTargets:1,hint:step==='1'?'跳过判定和摸牌，视为使用无距离限制的杀':step==='3'?'弃一装备并跳过出牌，视为使用杀':'跳过弃牌并翻面，视为使用杀'});
+  if(n==='神速'){const targets=living(s,p,t=>!(hasSkill(t,'空城')&&!t.hand.length)&&!st.turn.noTargets?.includes(t.id));if(st.turn.noMoreUse)return;return prompt({cards:step==='3'?both.filter(id=>CARD_MAP[CARD_BY_ID[id].kind].slot):[],minCards:step==='3'?1:0,targets,minTargets:1,hint:step==='1'?'跳过判定和摸牌，视为使用无距离限制的杀':step==='3'?'弃一装备并跳过出牌，视为使用杀':'跳过弃牌并翻面，视为使用杀'});}
   if(n==='巧变')return prompt({cards:hand,minCards:1,hint:`弃一张手牌跳过${['准备','判定','摸牌','出牌','弃牌'][+step]}阶段`});
-  if(n==='巧变摸牌')return prompt({targets:living(s,p,t=>t.hand.length>0),maxTargets:2,optional:false});
+  if(n==='巧变摸牌'){const targets=living(s,p,t=>t.hand.length>0);if(!targets.length)return;return prompt({targets,minTargets:1,maxTargets:Math.min(2,targets.length),hint:'获得一至两名角色的手牌，或不获得'});}
   if(n==='移牌'){
-    const pairs=Object.fromEntries(s.players.flatMap(t=>[...t.equip,...t.judge]).map(id=>[id,alive(s).filter(t=>canMoveBoard(s,id,t)).map(t=>t.id)])),cards=Object.keys(pairs).filter(id=>pairs[id].length);if(!cards.length)return;
-    return prompt({cards,minCards:1,targets:[...new Set(cards.flatMap(id=>pairs[id]))],cardTargets:pairs,minTargets:1,optional:false,hint:'选择场上一张装备或判定牌，再选择高亮的新归属'});
+    const pairs=boardMovePairs(s),cards=Object.keys(pairs).filter(id=>pairs[id].length);if(!cards.length)return;
+    return prompt({cards,minCards:1,targets:[...new Set(cards.flatMap(id=>pairs[id]))],cardTargets:pairs,minTargets:1,options:[option('yes','移动一张牌')],hint:'选择场上一张装备或判定牌，再选择新归属；也可以不移动'});
   }
   if(n==='解围'){if(!hand.length)return;return prompt({cards:hand,minCards:1,hint:'弃一张手牌，再移动场上一张装备或判定牌'});}
   if(n==='放权')return step==='extra'?prompt({cards:hand,minCards:1,targets:other,minTargets:1,hint:'弃一张手牌，令另一角色获得额外回合'}):prompt({hint:'跳过出牌阶段，本回合手牌上限改为体力上限'});
@@ -249,7 +253,7 @@ export function resolveComplete(s,p,a){
   const q=s.rules.pending;if(!q?.stage?.startsWith('complete:'))return false;
   check(q.player===p.id,'等待对应玩家选择');const d=q.internal||{},st=cs(p),n=q.skill,step=q.stage.slice(9),ids=a.cards||[],targets=a.targets||[],c=a.choice;
   check(Array.isArray(ids)&&Array.isArray(targets)&&new Set(ids).size===ids.length&&new Set(targets).size===targets.length,'选择重复或无效');
-  if(c==='decline'){check(q.optional,'此步骤必须选择');s.rules.pending=null;if(['天香','流离','谦逊'].includes(n)&&d.effect)enqueue(s,d.effect);if(n==='救援')heal(s,p);return true;}
+  if(c==='decline'){check(q.optional,'此步骤必须选择');s.rules.pending=n==='蛊惑声明'?d.resume||null:null;if(['天香','流离','谦逊'].includes(n)&&d.effect)enqueue(s,d.effect);if(n==='救援')heal(s,p);return true;}
   const opt=q.choices.find(x=>x.id===c);check(opt,'技能选项无效');const min=opt.minCards??q.minCards,max=opt.maxCards??q.maxCards;
   check(ids.length>=min&&ids.length<=max&&ids.every(id=>d.allowedCards.includes(id)),'请选择要求的技能材料');
   check(targets.length>=(opt.minTargets??q.minTargets)&&targets.length<=(opt.maxTargets??q.maxTargets)&&targets.every(id=>q.targetIds.includes(id)&&!seat(s,id).dead),'请选择要求的技能目标');
@@ -273,7 +277,7 @@ export function resolveComplete(s,p,a){
   else if(n==='屯田')enqueue(s,{type:'judge',target:p.id,purpose:'complete:屯田',skillInfo:{owner:p.id}});
   else if(n==='天香'){drop(s,p,ids);if(c==='damage')enqueue(s,{...d.effect,target:t.id,amount:1,completeDamage:false,chain:false,slash:false,duel:false,card:null,cards:[],useKey:null}, {type:'completeTianxiangDraw',owner:t.id});else {loss(s,t);take(s,t,ids);} }
   else if(n==='流离'){
-    const test=structuredClone(p);test.equip=test.equip.filter(id=>!ids.includes(id));check(t.id!==d.effect.source&&distance(s,p.id,t.id)<=attackRange(test),'弃置装备后目标不在攻击范围内');drop(s,p,ids);const effect={...d.effect,target:t.id,targetHand:t.hand.length,skillPrepared:false,liuliChecked:false,redirected:[...(d.effect.redirected||[]),p.id]};delete effect.skillKey;delete effect.fuyinChecked;enqueue(s,effect);note(s,`${p.name} 将杀转给${t.name}。`);
+    check(t.id!==d.effect.source&&cardDistance(s,p,t,ids)<=cardAttackRange(s,p,ids),'弃置装备后目标不在攻击范围内');drop(s,p,ids);const effect={...d.effect,target:t.id,targetHand:t.hand.length,skillPrepared:false,liuliChecked:false,redirected:[...(d.effect.redirected||[]),p.id]};delete effect.skillKey;delete effect.fuyinChecked;enqueue(s,effect);note(s,`${p.name} 将杀转给${t.name}。`);
   }
   else if(n==='谦逊'){const cards=[...p.hand];removeOwned(s,p,cards,{reason:'store'});st.shelter??=[];st.shelter.push(...cards);enqueue(s,d.effect);}
   else if(n==='往烈'){s.completeUses[d.key].unrespondable=true;st.turn.noMoreUse=true;}
@@ -327,16 +331,16 @@ export function resolveComplete(s,p,a){
 }
 
 export function clearSkillZone(s,p,name){const z={屯田:'field',征荣:'honor',明任:'duty',不屈:'wound',箜声:'song'}[name];if(z&&special(p,z).length){s.discard.push(...special(p,z));cs(p).zones[z]=[];note(s,`${p.name} 失去${name}，相应专属牌移入弃牌堆。`);}}
-function canMoveBoard(s,id,t){const owner=s.players.find(x=>x.equip.includes(id)||x.judge.includes(id));if(!owner||owner.id===t.id||t.dead)return false;const kind=s.delayKinds[id]||CARD_BY_ID[id].kind,slot=CARD_MAP[kind].slot;return owner.equip.includes(id)?!cs(t).abolished.includes(slot)&&!t.equip.some(cid=>CARD_MAP[CARD_BY_ID[cid].kind].slot===slot):!cs(t).abolished.includes('judge')&&!t.judge.some(cid=>(s.delayKinds[cid]||CARD_BY_ID[cid].kind)===kind);}
 function moveBoard(s,p,id,t){
   const owner=s.players.find(x=>x.equip.includes(id)||x.judge.includes(id));check(owner&&owner.id!==t.id,'请选择其他角色作为新归属');
-  check(canMoveBoard(s,id,t),'目标不能接收这张场上牌');
+  const advice=boardMoveAdvice(s,id,t);check(advice.ok,advice.reason);
   const equip=owner.equip.includes(id),kind=s.delayKinds[id]||CARD_BY_ID[id].kind,slot=CARD_MAP[kind].slot;
   if(equip){check(!cs(t).abolished.includes(slot)&&!t.equip.some(cid=>CARD_MAP[CARD_BY_ID[cid].kind].slot===slot),'目标装备槽不可用');removeOwned(s,owner,[id],{reason:'move'});t.equip.push(id);}
   else {owner.judge.splice(owner.judge.indexOf(id),1);t.judge.push(id);}
   note(s,`${p.name} 将${owner.name}的${cardLabel(id)}移动给${t.name}。`);
 }
 
+export const bluffMaterials=p=>[...(!p.skillState?.turn?.handBlocked?p.hand||[]:[]),...storedCards(p)];
 export const COMPLETE_ACTIVE=new Set(['义绝','审时','贞良','攻心','急袭','清侧','蛊惑']);
 export function activateComplete(s,p,a){
   if(!complete(s)||!COMPLETE_ACTIVE.has(a.skill))return false;
@@ -344,10 +348,10 @@ export function activateComplete(s,p,a){
   check(s.status==='playing'&&!p.dead&&hasSkill(p,n),'当前没有此技能');
   check(Array.isArray(ids)&&new Set(ids).size===ids.length&&Array.isArray(targets)&&new Set(targets).size===targets.length,'技能选择无效');
   if(n==='蛊惑'){
-    check(!st.used[n]&&p.hand.length,'本回合已蛊惑或没有手牌');const q=s.rules.pending;
+    const materials=bluffMaterials(p);check(!st.used[n]&&!st.turn.noMoreUse&&materials.length,'本回合已蛊惑或没有可用材料');const q=s.rules.pending;
     check(!q&&s.turn===p.id&&s.phase===3||q&&(q.player===p.id||q.kind==='counter'&&q.players.includes(p.id))&&['counter','slash','duel','aoe','borrow','save'].includes(q.kind),'当前不能声明蛊惑');
     const kinds=q?q.kind==='counter'?['wuxie']:q.kind==='save'?['tao',...(q.target===p.id?['jiu']:[])]:q.required==='sha'?['sha','fire_sha','thunder_sha']:['shan']:Object.keys(CARD_MAP).filter(k=>['基本','锦囊'].includes(CARD_MAP[k].type)&&!['le','bingliang','shandian','shan','wuxie'].includes(k)&&!CARD_MAP[k].manual);
-    ask(s,p,'蛊惑声明','declare',{cards:p.hand,minCards:1,targets:q?[]:alive(s).map(t=>t.id),maxTargets:q?0:2,options:kinds.filter(k=>s.deckSet!=='standard'||!['fire_sha','thunder_sha','jiu','huogong','tiesuo','bingliang'].includes(k)).map(k=>option(k,`声明${CARD_MAP[k].name}`)),hint:q?'选择一张手牌扣置并声明响应牌':'选择扣置手牌及声明牌的目标；自用及全体牌可不选目标',data:{resume:q}});return true;
+    ask(s,p,'蛊惑声明','declare',{cards:materials,minCards:1,targets:q?[]:alive(s).map(t=>t.id),maxTargets:q?0:2,options:kinds.filter(k=>s.deckSet!=='standard'||!['fire_sha','thunder_sha','jiu','huogong','tiesuo','bingliang'].includes(k)).map(k=>option(k,`声明${CARD_MAP[k].name}`)),hint:q?'选择一张手牌或木牛储牌扣置，声明响应牌':'选择扣置手牌及声明牌的目标；自用及全体牌可不选目标',data:{resume:q}});return true;
   }
   check(!s.rules.pending&&!s.rules.queue.length&&s.turn===p.id&&s.phase===3&&p.hp>0,'请在自己的出牌阶段发动');check(!st.turn.noMoreUse,'往烈：本回合不能再使用牌');
   check(targets.length===1,'请选择一名目标');const t=seat(s,targets[0]);check(!t.dead&&t.id!==p.id,'请选择其他存活角色');
@@ -363,9 +367,9 @@ export function activateComplete(s,p,a){
 
 function declareBluff(s,p,kind,ids,targets,resume){enqueue(s,{type:'completeBluffValidate',owner:p.id,kind,cards:ids,targets:targets.length?targets:[p.id],resume});}
 export function beginBluff(s,e){
-  const p=seat(s,e.owner);check(e.cards.length===1&&p.hand.includes(e.cards[0]),'蛊惑材料已移动');cs(p).used['蛊惑']=true;removeOwned(s,p,e.cards,{handOnly:true,reason:'use'});
+  const p=seat(s,e.owner);check(e.cards.length===1&&bluffMaterials(p).includes(e.cards[0]),'蛊惑材料已移动');const origin=storedCards(p).includes(e.cards[0])?{zone:'wood',treasure:p.wood.treasure}:{zone:'hand'};cs(p).concealedOrigin=origin;cs(p).used['蛊惑']=true;removeOwned(s,p,e.cards,{reason:'use'});
   cs(p).concealed=[...e.cards];const order=alive(s),at=order.findIndex(t=>t.id===s.turn),players=[...order.slice(at),...order.slice(0,at)].filter(t=>t.id!==p.id&&!hasSkill(t,'缠怨')).map(t=>t.id);
-  const data={...e,players,index:0};note(s,`${p.name} 扣置一张手牌，声明${CARD_MAP[e.kind].name}。`);nextBluff(s,data);
+  const data={...e,origin,players,index:0};note(s,`${p.name} 扣置一张手牌，声明${CARD_MAP[e.kind].name}。`);nextBluff(s,data);
 }
 function nextBluff(s,d){
   const id=d.players[d.index];if(id){const p=seat(s,id);ask(s,p,'蛊惑质疑','challenge',{options:[option('challenge','质疑并翻开'),option('trust','不质疑')],optional:false,data:d,hint:`${seat(s,d.owner).name} 声明${CARD_MAP[d.kind].name}`});}
@@ -375,7 +379,10 @@ function finishBluffQuestion(s,p,c,d){
   if(c==='trust'){nextBluff(s,{...d,index:d.index+1});return;}
   const card=d.cards[0],truth=CARD_BY_ID[card].kind===d.kind;note(s,`蛊惑翻开${cardLabel(card)}，声明${truth?'真实':'虚假'}。`);if(truth)gained(p,'缠怨');d.revealed=true;finishBluff(s,d,truth);
 }
-function finishBluff(s,d,valid){const p=seat(s,d.owner);const cards=cs(p).concealed||[];check(cards.length===1&&cards[0]===d.cards[0],'蛊惑扣置牌缺失');cs(p).concealed=[];if(valid){if(!d.revealed){s.hiddenMaterials??={};s.hiddenMaterials[cards[0]]={owner:p.id,viewers:[p.id],location:{zone:'pool',owner:p.id}};}p.hand.push(...cards);enqueue(s,{...d,type:'completeBluffUse'});}else{s.discard.push(...cards);s.rules.pending=d.resume||null;}}
+function finishBluff(s,d,valid){const p=seat(s,d.owner),st=cs(p),cards=st.concealed||[];check(cards.length===1&&cards[0]===d.cards[0],'蛊惑扣置牌缺失');if(valid){if(!d.revealed){s.hiddenMaterials??={};s.hiddenMaterials[cards[0]]={owner:p.id,viewers:[p.id],location:{zone:'commit',owner:p.id}};}enqueue(s,{...d,type:'completeBluffUse'});}else{st.concealed=[];delete st.concealedOrigin;s.discard.push(...cards);s.rules.pending=d.resume||null;}}
+// Restore and consume prepaid material within the same queue step, never a projected hand gain.
+export function restoreBluffMaterial(s,p,e){const st=cs(p),cards=st.concealed||[];check(cards.length===1&&cards[0]===e.cards[0],'蛊惑扣置材料已变化');if(st.concealedOrigin?.zone==='wood'){check(p.wood?.treasure===st.concealedOrigin.treasure,'蛊惑储牌容器已变化');p.wood.cards.push(...cards);}else p.hand.push(...cards);st.concealed=[];delete st.concealedOrigin;}
+
 
 export function completeJudge(s,q){
   if(!complete(s)||!q.purpose?.startsWith('complete:'))return false;
@@ -416,6 +423,7 @@ export function validateCompleteState(s,assert){
     if(st.avatars)assert(Array.isArray(st.avatars)&&new Set(st.avatars).size===st.avatars.length&&st.avatars.every(id=>GENERAL_MAP[id]),'化身池无效');
     if(st.avatar)assert(st.avatars?.includes(st.avatar.general)&&GENERAL_MAP[st.avatar.general]?.skills.some(sk=>sk.name===st.avatar.skill&&borrowable(sk)),'亮出化身无效');
     if(st.concealed)assert(Array.isArray(st.concealed)&&st.concealed.length<=1,'扣置牌区无效');
+    if(st.concealedOrigin)assert(st.concealed?.length===1&&['hand','wood'].includes(st.concealedOrigin.zone)&&(st.concealedOrigin.zone!=='wood'||st.concealedOrigin.treasure===p.wood?.treasure),'扣置材料来源无效');
   }
 }
 

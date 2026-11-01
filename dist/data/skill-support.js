@@ -5,9 +5,9 @@ export const AUTOMATED_NAMES=new Set([...ACTIVE_SKILLS,'奸雄','反馈','刚烈
 const partial={caoren:{解围:'装备转无懈已实现；从背面翻回时的弃牌移动分支仍人工裁定'},jie_luxun:{谦逊:'普通单目标锦囊暂存已支持；延时锦囊的来源与生效时机仍待补齐'},lukang:{决堰:'武器、防具和坐骑分支已自动；宝物获得集智的版本分支待核对'},jie_guanyu:{义绝:'禁用非锁定技与手牌的完整窗口待实现'},jie_machao:{铁骑:'本回合非锁定技失效及同花色弃牌分支待实现'},jie_sunquan:{救援:'界版改为他人自用桃的替代回复，尚未接入'},huangyueying:{集智:'亮顶基本牌的交换位置需要进一步核对，暂不自动执行此分支'},yanliangwenchou:{双雄:'摸牌替换与决斗转化已接入；受伤回收对手杀仍待补齐'}};
 export const COMPLETE_NAMES=new Set([...AUTOMATED_NAMES,...Object.keys(SKILL_DIFFICULTIES),'急袭','清侧','攻心','缠怨']);
 export function skillSupport(g,skill,complete=false){
- if(complete&&COMPLETE_NAMES.has(skill.name))return {status:ACTIVE_SKILLS.has(skill.name)?'主动自动':'触发 / 被动自动',full:true,difficult:false,reason:'玩家决定发动、材料和目标，系统执行效果。专属牌区、阶段跳过及后续追踪由权威队列管理。'};
+ if(complete&&COMPLETE_NAMES.has(skill.name))return {status:ACTIVE_SKILLS.has(skill.name)?'主动自动':'触发 / 被动自动',full:true,difficult:false,reason:'按技能时机选择发动、材料、目标或分支。'};
  const reason=SKILL_DIFFICULTIES[skill.name]||partial[g.id]?.[skill.name];
  if(reason)return {status:AUTOMATED_NAMES.has(skill.name)&&!['jie_machao:铁骑','jie_sunquan:救援'].includes(g.id+':'+skill.name)?'部分自动':'困难 · 人工',full:false,difficult:true,reason};
- if(AUTOMATED_NAMES.has(skill.name))return {status:ACTIVE_SKILLS.has(skill.name)?'主动自动':'触发 / 被动自动',full:true,difficult:false,reason:'由系统校验时机、成本和效果；可选技能仍由玩家决定是否发动。'};
+ if(AUTOMATED_NAMES.has(skill.name))return {status:ACTIVE_SKILLS.has(skill.name)?'主动自动':'触发 / 被动自动',full:true,difficult:false,reason:'按技能时机选择发动、材料和目标。'};
  return {status:'待实现 · 人工',full:false,difficult:true,reason:'此技能尚无完整自动处理器，继续使用人工步骤与工具。'};
 }

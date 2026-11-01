@@ -1,3 +1,4 @@
+import {recordEquipmentCue,cardMotion} from './presentation.js';
 import {observeCompleteMoves} from './complete-skills.js';
 import {check,seat,alive,equipKind,hasSkill,drawCards,removeOwned,effectiveKind,CARD_BY_ID,CARD_MAP,note,randomIndex} from './primitives.js';
 import {GENERAL_MAP} from '../data/generals.js';
@@ -45,6 +46,7 @@ export function resolveEquipment(s,p,a){
   if(!decline)check(ids.length>=min&&ids.length<=max&&ts.length>=q.minTargets&&ts.length<=q.maxTargets,'装备材料或目标数量不符');
   s.rules.pending=null;
   if(decline){if(['hanbing','qilin'].includes(stage))s.rules.queue.unshift(info.effect);return true;}
+  recordEquipmentCue(s,p,info.weapon,info.target);
   if(stage==='cixiong'){const t=seat(s,info.target);if(t.hand.length)offer(s,t,'cixiong','cixiongPay',{source:p.id},{optional:false,maxCards:1,zone:'hand',choices:[{id:'discard',label:'弃一张手牌',minCards:1,maxCards:1},{id:'draw',label:'令使用者摸一张',minCards:0,maxCards:0}]});else drawCards(s,p,1);}
   else if(stage==='cixiongPay'){if(a.choice==='discard'){check(ids.length===1&&p.hand.includes(ids[0]),'选择一张手牌');removeOwned(s,p,ids,{handOnly:true});s.discard.push(...ids);}else drawCards(s,seat(s,info.source),1);}
   else if(stage==='guanshi'){check(ids.length===2&&ids.every(id=>CARD_BY_ID[id]?.kind!=='guanshi'),'贯石斧不能作为自身费用');removeOwned(s,p,ids);s.discard.push(...ids);s.rules.queue.push({...info.effect,type:'damage',slash:true});}

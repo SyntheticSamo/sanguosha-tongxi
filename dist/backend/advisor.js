@@ -2,8 +2,8 @@ import {validateActiveIntent} from './skill-intent.js';
 import {slashTargetLimit} from './equipment.js';
 // Read-only affordances. Uses the same pure validators as authoritative actions;
 // accepts a projected view and never needs another player's hidden hand.
-import { validateUse,validateResponse } from './rules.js';
-import { effectiveKind,distance,attackRange,cardAttackRange,equipKind,hasSkill } from './primitives.js';
+import { validateUse,validateResponse,publicEffectTargets } from './rules.js';
+import { effectiveKind,distance,attackRange,distanceBreakdown,cardAttackRange,equipKind,hasSkill } from './primitives.js';
 import { CARD_BY_ID,CARD_MAP } from '../data/cards.js';
 import {handLimit,skillInput} from './skills.js';
 
@@ -42,7 +42,7 @@ export function inspectUse(v,ids,as=null,chosen=[]){
     return {id:t.id,...status,distance:distance(v,mode==='ordered'&&chosen.length?chosen[0]:p.id,t.id),range:mode==='ordered'&&chosen.length?attackRange(v.players.find(x=>x.id===chosen[0])):cardAttackRange(v,p,ids)};
   });
   const status=targets.length?check(targets):{ok:false,reason:mode==='ordered'?'先选持武器者，再选其杀的目标':mode==='multiple'?'选择一至两名角色，或重铸':'请选择一个目标'};
-  return {...status,kind,mode,targets:options,action:{cards:[...ids],as:as||undefined,targets,target:targets[0]}};
+  return {...status,kind,mode,affected:status.ok?publicEffectTargets(s,p,kind,ids,targets.map(id=>s.players.find(p=>p.id===id))):[],targets:options,action:{cards:[...ids],as:as||undefined,targets,target:targets[0]}};
 }
 export function responseOptions(v,ids){
   const s=ruleState(v),p=mine(v),variants=[null,...conversionKinds(v)];
@@ -66,10 +66,10 @@ export function discardAdvice(v,ids=[]){
   return {limit,needed,selected,remaining:Math.max(0,needed-selected),exempt,ok:needed>0&&selected===needed};
 }
 export function distanceExplanation(v,from,to){
-  const a=v.players.find(p=>p.id===from),b=v.players.find(p=>p.id===to),live=v.players.filter(p=>!p.dead);
+  const a=v.players.find(p=>p.id===from),b=v.players.find(p=>p.id===to),d=distanceBreakdown(v,from,to);
   if(!a||!b||a.dead||b.dead)return '阵亡角色不计入距离';
-  const d=Math.abs(live.indexOf(a)-live.indexOf(b)),base=Math.min(d,live.length-d);
-  return `存活座次 ${base}${equipKind(a,'minus')?' · 进攻马 −1':''}${hasSkill(a,'马术')?' · 马术 −1':''}${equipKind(b,'plus')?' · 防御马 +1':''}；最终距离 ${distance(v,from,to)}（反向 ${distance(v,to,from)}），攻击范围 ${attackRange(a)}`;
+  if(from===to)return `攻击范围 ${attackRange(a)}${equipKind(a,'weapon')?' · '+CARD_MAP[equipKind(a,'weapon')].name:' · 无武器'}；攻击范围与角色距离分别计算。`;
+  return `存活座距 ${d.base}${d.modifiers.map(m=>' · '+m.name+' '+(m.value>0?'+':'−')+Math.abs(m.value)).join('')}；最终距离 ${d.value}（最低为1；反向 ${distance(v,to,from)}），攻击范围 ${attackRange(a)}`;
 }
 
 export function inspectSkill(v,skill,ids=[],chosen=[],option='',value=1){
@@ -79,4 +79,13 @@ export function inspectSkill(v,skill,ids=[],chosen=[],option='',value=1){
   if(spec.maxTargets===2&&selected.length===1){const trials=v.players.filter(x=>x.id!==t.id).map(x=>validate([t.id,x.id]));return {id:t.id,...(trials.find(x=>x.ok)||trials[0])};}
   return {id:t.id,...validate(selected)};
  })};
+}
+
+// Highlight only local projected materials that pass the same response validator.
+export function responseMaterials(v){
+ const q=v.pending,p=mine(v);if(q?.player===v.you&&q.kind==='skill')return [...(q.cardChoices||[])];if(!q||q.player!==v.you||!['counter','slash','aoe','duel','save','borrow'].includes(q.kind))return [];
+ const ids=[...p.hand,...p.equip,...(p.wood?.cards||[])],valid=new Set();
+ for(const id of ids)if(responseOptions(v,[id]).some(r=>r.ok))valid.add(id);
+ if(equipKind(p,'weapon')==='zhangba'&&['slash','aoe','duel','borrow'].includes(q.kind)&&q.required!=='shan')for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++)if(responseOptions(v,[ids[i],ids[j]]).some(r=>r.ok)){valid.add(ids[i]);valid.add(ids[j]);}
+ return [...valid];
 }

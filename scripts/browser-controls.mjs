@@ -1,7 +1,8 @@
 // Navigate real disclosure widgets after the scene/dock layout change.
 export async function reveal(p,selector){
+ await p.waitForFunction(()=>!document.querySelector('#selection-label')?.textContent.includes('正在等待牌桌确认'));
  const el=p.locator(selector).first();
- if(await el.evaluate(e=>!!e.closest('#table-dock'))){if(!await p.locator('#table-dock').evaluate(e=>e.open))await p.locator('#table-dock>summary').click();const pane=await el.evaluate(e=>e.closest('.dock-pane')?.id);if(pane)await p.locator(`[data-ui=dock-tab][data-tab="${pane.slice(5)}"]`).click();}
+ if(await el.evaluate(e=>!!e.closest('#table-dock'))){const pane=await el.evaluate(e=>e.closest('.dock-pane')?.id);await p.locator('.stage-header [data-ui=logs]').click();if(pane)await p.locator(`[data-ui=dock-tab][data-tab="${pane.slice(5)}"]`).click();await p.locator('#table-dock[open]').waitFor();}
  if(await el.evaluate(e=>!!e.closest('#process-panel'))&&!await p.locator('#process-panel').evaluate(e=>e.open))await p.locator('#process-panel>summary').click();
  if(await el.evaluate(e=>!!e.closest('#hand-context'))&&!await p.locator('#hand-context').evaluate(e=>e.open)){const selected=p.locator('#hand [data-card][aria-pressed=true]').first();await (await selected.count()?selected:p.locator('#hand')).focus();await p.keyboard.press('Shift+F10');}
  for(const id of ['manual-controls'])if(await el.evaluate((e,id)=>!!e.closest('#'+id),id)&&!await p.locator('#'+id).evaluate(e=>e.open))await p.locator('#'+id+'>summary').click();

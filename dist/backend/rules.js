@@ -1,5 +1,6 @@
 import {experience,prepareBlindChoice,takeBlindChoice} from './interaction.js';
-import {phaseToken} from './flow.js';
+import {phaseToken,markDrawCompleted} from './flow.js';
+import {captureOpportunity,feasiblePrompt,stillHasOpportunity,stageKey} from './skill-windows.js';
 import {validateActiveIntent} from './skill-intent.js';
 import {storedCards,isUsableHand,settleWood} from './wood.js';
 import {tactile} from './flow.js';
@@ -7,16 +8,16 @@ import {slashTargetLimit,beforeWeaponSlash,weaponDamage,weaponDodged,equipmentTa
 import {check,seat,alive,note,event,topCard,drawCards,hasSkill,equipKind,distance,attackRange,cardAttackRange,isSlash,natureOf,removeOwned,effectiveKind,CARD_BY_ID,CARD_MAP,cardLabel,red,randomIndex,unlimitedDistance,cardRedFor,cardSuitFor,skillGeneral,cardDistance} from './primitives.js';
 import {startSkills,phaseSkills,leavePhaseSkills,resetTurnSkills,handLimit,drawPhaseCount,afterDamageSkills,afterDeathSkills,prepareUseSkills,processSkillTask,resolveSkill,resolveSkillJudge,activateSkill,stateOf,processSkillPick,prepareSkillSlash,afterSkillPindian,afterSkillUse,isJie as isJieSkill} from './skills.js';
 
-import {recordPlay,cardMotion,endHiddenMaterials,settleHiddenMaterials,recordEffect} from './presentation.js';
-import {complete,cs,special,specialCards,observeCompleteMoves,processComplete,beforeCompleteDamage,completeDying,completeBeforeEffect,completeResponse,activateComplete,completePhase,beginBluff,completeFlip,nextCompleteTurn,completeHandUse,completeFinishedCards} from './complete-skills.js';
+import {recordPlay,cardMotion,recordEquipmentCue,endHiddenMaterials,settleHiddenMaterials,recordEffect,recordOutcome} from './presentation.js';
+import {complete,cs,special,specialCards,observeCompleteMoves,processComplete,beforeCompleteDamage,completeDying,completeBeforeEffect,completeResponse,activateComplete,completePhase,beginBluff,completeFlip,nextCompleteTurn,completeHandUse,completeFinishedCards,bluffMaterials,restoreBluffMaterial} from './complete-skills.js';
 export const freshRules=()=>({pending:null,queue:[],resolving:[],market:[],commits:{},slash:0,slashPlayed:0,wineUsed:false,drank:0,skipDraw:false,skipPlay:false,lastResult:null});
 const active=s=>s.mode==='auto';
 const idle=s=>{check(!s.flow?.opening,'开局发牌展示尚未结束');check(!s.rules.pending&&!s.rules.queue.length,'请先完成当前响应');};
 function playPhase(s,p){check(s.turn===p.id&&s.phase===3,'请在自己的出牌阶段使用');check(!p.dead&&p.hp>0,'当前不能出牌');}
 const handCount=p=>p.hand?.length??p.handCount??0;
 const attackAllowed=(s,a,b,ids=[])=>{check(b&&a.id!==b.id&&!b.dead,'请选择其他存活角色');check(unlimitedDistance(s,a,b,ids,'sha')||cardDistance(s,a,b,ids)<=cardAttackRange(s,a,ids),'目标超出攻击范围');check(!(hasSkill(b,'空城')&&!handCount(b)),'空城：不能指定该目标');};
-function useCards(s,p,ids,kind,targets=[]){completeHandUse(s,p,ids,kind);recordPlay(s,p,ids,kind,targets.map(t=>t.id));if(ids.length)removeOwned(s,p,ids,{reason:'use'});s.pool.push(...ids);s.rules.resolving.push(...ids);prepareUseSkills(s,p,kind,ids,targets,false);note(s,ids.some(id=>s.hiddenMaterials?.[id])?`${p.name} 使用扣置的「${CARD_MAP[kind].name}」。`:ids.length?`${p.name} 使用 ${ids.map(cardLabel).join('、')}${kind!==CARD_BY_ID[ids[0]].kind?`（${CARD_MAP[kind].name}）`:''}。`:`${p.name} 视为使用「${CARD_MAP[kind].name}」，不生成实体牌。`);}
-function discardResponse(s,p,ids,kind=null){completeResponse(s,p,ids,kind||CARD_BY_ID[ids[0]].kind,s.rules.pending||{});recordPlay(s,p,ids,kind||CARD_BY_ID[ids[0]].kind,[],true);cardMotion(s,ids,{zone:'play',owner:p.id},{zone:'discard'},{actor:p.id,publicFace:true});removeOwned(s,p,ids,{reason:'use'});s.discard.push(...ids);note(s,`${p.name} 打出 ${ids.map(cardLabel).join('、')}。`);}
+function useCards(s,p,ids,kind,targets=[],{prepaid=false}={}){completeHandUse(s,p,ids,kind);recordPlay(s,p,ids,kind,targets.map(t=>t.id));if(ids.length)removeOwned(s,p,ids,{reason:'use',prepaid});s.pool.push(...ids);s.rules.resolving.push(...ids);prepareUseSkills(s,p,kind,ids,targets,false);note(s,ids.some(id=>s.hiddenMaterials?.[id])?`${p.name} 使用扣置的「${CARD_MAP[kind].name}」。`:ids.length?`${p.name} 使用 ${ids.map(cardLabel).join('、')}${kind!==CARD_BY_ID[ids[0]].kind?`（${CARD_MAP[kind].name}）`:''}。`:`${p.name} 视为使用「${CARD_MAP[kind].name}」，不生成实体牌。`);}
+function discardResponse(s,p,ids,kind=null,prepaid=false){completeResponse(s,p,ids,kind||CARD_BY_ID[ids[0]].kind,s.rules.pending||{});recordPlay(s,p,ids,kind||CARD_BY_ID[ids[0]].kind,[],true);cardMotion(s,ids,{zone:'play',owner:p.id},{zone:'discard'},{actor:p.id,publicFace:true});removeOwned(s,p,ids,{reason:'use',prepaid});s.discard.push(...ids);note(s,`${p.name} 打出 ${ids.map(cardLabel).join('、')}。`);}
 function finishSelectedCards(s,ids){
   const finished=[];for(const id of ids){const i=s.pool.indexOf(id);if(i>=0){s.pool.splice(i,1);s.discard.push(id);finished.push(id);cardMotion(s,[id],{zone:'pool'},{zone:'discard'},{publicFace:true,actor:Object.entries(s.lastPublicPlay||{}).find(([,p])=>p.cards.includes(id))?.[0]||null});}}
   s.rules.resolving=s.rules.resolving.filter(id=>!ids.includes(id));s.rules.market=s.rules.market.filter(id=>!ids.includes(id));return finished;
@@ -24,7 +25,7 @@ function finishSelectedCards(s,ids){
 function finishCards(s){const ids=[...s.rules.resolving,...s.rules.market],finished=finishSelectedCards(s,ids);completeFinishedCards(s,finished);settleHiddenMaterials(s);endHiddenMaterials(s,Object.keys(s.hiddenMaterials||{}));}
 
 function pending(s,value){if(experience(s)&&['chooseCard','market'].includes(value.kind))value.windowId=`${s.rev}:pick:${crypto.randomUUID()}`;s.rules.pending=value;prepareBlindChoice(s,value);}
-function order(s,start=s.turn){const list=alive(s).map(p=>p.id),i=Math.max(0,list.indexOf(start));return [...list.slice(i),...list.slice(0,i)];}
+function order(s,start=s.turn){const i=Math.max(0,s.players.findIndex(p=>p.id===start));return [...s.players.slice(i),...s.players.slice(0,i)].filter(p=>!p.dead).map(p=>p.id);}
 function endGame(s){
   const live=alive(s),lord=s.players.find(p=>p.role==='lord');let winner=null;
   if(lord.dead)winner=live.length===1&&live[0].role==='spy'?'内奸':'反贼';
@@ -32,7 +33,7 @@ function endGame(s){
   if(winner){s.status='finished';s.winner=winner;s.rules.pending=null;s.rules.queue=[];finishCards(s);note(s,`${winner} 获胜。`);}
 }
 function death(s,p,source){
-  p.dead=true;p.roleOpen=true;const privateCards=s.peek[p.id]||[],grave=[...p.hand,...p.equip,...p.judge,...privateCards,...(p.skillState?.shelter||[]),...specialCards(p),...(p.skillState?.concealed||[])];s.peek[p.id]=[];s.discard.push(...grave);p.hand=[];p.equip=[];p.judge=[];settleWood(s);if(p.skillState){p.skillState.shelter=[];p.skillState.zones={};p.skillState.concealed=[];}
+  p.dead=true;p.roleOpen=true;const privateCards=s.peek[p.id]||[],grave=[...p.hand,...p.equip,...p.judge,...privateCards,...(p.skillState?.shelter||[]),...specialCards(p),...(p.skillState?.concealed||[])];s.peek[p.id]=[];s.discard.push(...grave);p.hand=[];p.equip=[];p.judge=[];settleWood(s);if(p.skillState){p.skillState.shelter=[];p.skillState.zones={};p.skillState.concealed=[];delete p.skillState.concealedOrigin;}
   note(s,`${p.name} 阵亡（${{lord:'主公',loyal:'忠臣',rebel:'反贼',spy:'内奸'}[p.role]}）。`);
   const killer=s.players.find(x=>x.id===source&&!x.dead);
   afterDeathSkills(s,p,killer,grave);
@@ -40,26 +41,45 @@ function death(s,p,source){
   if(killer?.role==='lord'&&p.role==='loyal'){s.discard.push(...killer.hand,...killer.equip);killer.hand=[];killer.equip=[];note(s,'主公误杀忠臣，弃置全部手牌和装备。');}
   endGame(s);
 }
+const wanshaActive=s=>s.skillAutomation&&!seat(s,s.turn).dead&&hasSkill(seat(s,s.turn),'完杀');
 function wounded(s,p,source){
   if(p.hp>0||p.dead)return;
   if(completeDying(s,p,source))return;
-  const saviors=order(s).filter(id=>!s.skillAutomation||!hasSkill(seat(s,s.turn),'完杀')||id===s.turn||id===p.id);pending(s,{kind:'save',target:p.id,source,saviors,index:0,player:saviors[0]});note(s,`${p.name} 濒死，等待求桃。`);
+  const saviors=order(s).filter(id=>experience(s)||!wanshaActive(s)||id===s.turn||id===p.id);pending(s,{kind:'save',target:p.id,source,saviors,index:0,player:saviors[0]});note(s,`${p.name} 濒死，等待求桃。`);
+}
+export function canSave(s,p,q=s.rules.pending){
+  if(q?.kind!=='save'||p.dead||!q.saviors.includes(p.id))return false;
+  if(wanshaActive(s)&&p.id!==s.turn&&p.id!==q.target)return false;
+  const probe={...s,rules:{...s.rules,pending:{...q,player:p.id}}};
+  for(const id of [...p.hand,...storedCards(p),...p.equip])for(const as of [null,'tao','jiu'])try{validateResponse(probe,p,{cards:[id],as});return true;}catch{}
+  if(s.skillAutomation&&p.id===q.target&&hasSkill(p,'涅槃')&&!stateOf(p).marks['涅槃'])return true;
+  return !!(complete(s)&&hasSkill(p,'蛊惑')&&!stateOf(p).used['蛊惑']&&bluffMaterials(p).length&&!stateOf(p).turn.noMoreUse);
+}
+export function repairSaveWindow(s){
+ const q=s.rules.pending;if(!experience(s)||q?.kind!=='save')return;
+ const start=Math.max(0,s.players.findIndex(p=>p.id===s.turn)),cycle=[...s.players.slice(start),...s.players.slice(0,start)],current=q.player||q.saviors[q.index],at=Math.max(0,cycle.findIndex(p=>p.id===current));
+ q.saviors=cycle.filter(p=>!p.dead).map(p=>p.id);const next=q.saviors.findIndex(id=>cycle.findIndex(p=>p.id===id)>=at);q.index=next<0?q.saviors.length:next;q.player=q.saviors[q.index];
+}
+function settleSaviors(s){
+  const q=s.rules.pending;if(!experience(s)||q?.kind!=='save')return;
+  if(seat(s,q.target).hp>0){s.rules.pending=null;return;}
+  while(q.index<q.saviors.length&&!canSave(s,seat(s,q.saviors[q.index]),q))q.index++;
+  if(q.index===q.saviors.length){s.rules.pending=null;death(s,seat(s,q.target),q.source);}else q.player=q.saviors[q.index];
 }
 function armorDamage(s,p,n,nature,ignoreArmor){
   if(ignoreArmor)return n;const armor=equipKind(p,'armor');
-  if(armor==='tengjia'&&nature==='fire')n++;
-  if(armor==='baiyin')n=Math.min(n,1);return n;
+  if(armor==='tengjia'&&nature==='fire'){recordEquipmentCue(s,p,'tengjia');n++;}
+  if(armor==='baiyin'){if(n>1)recordEquipmentCue(s,p,'baiyin');n=Math.min(n,1);}return n;
 }
 function damage(s,e){
   let {source,target,amount=1,nature='normal',ignoreArmor=false,chain=false,slash=false,card=null,color=null,duel=false,cards=null,useKey=null,wine=false}=e;
   const p=seat(s,target);if(p.dead)return;
-  if(s.skillAutomation&&stateOf(p).marks.orange>0&&alive(s).some(t=>hasSkill(t,'怀橘'))){stateOf(p).marks.orange--;note(s,`${p.name} 移去一橘，防止本次伤害。`);return;}
-  if(!e.completeDamage&&!e.weaponModifiersDone&&s.skillAutomation&&source){const a=seat(s,source);if((slash||duel)&&stateOf(a).marks.bare&&(isJieSkill(a)||s.turn===a.id))amount++;if(complete(s)&&slash&&stateOf(a).turn.yijueTarget===p.id&&cards?.some(id=>cardSuitFor(a,CARD_BY_ID[id])==='H'))amount++;}
-  if(!e.completeDamage&&!e.weaponModifiersDone&&slash&&source&&equipKind(seat(s,source),'weapon')==='guding'&&!p.hand.length)amount++;
+  if(s.skillAutomation&&stateOf(p).marks.orange>0&&alive(s).some(t=>hasSkill(t,'怀橘'))){stateOf(p).marks.orange--;recordEffect(s,e,'canceled','skill','怀橘');note(s,`${p.name} 移去一橘，防止本次伤害。`);return;}
+  if(!chain&&!e.completeDamage&&!e.weaponModifiersDone&&s.skillAutomation&&source){const a=seat(s,source);if((slash||duel)&&stateOf(a).marks.bare&&(isJieSkill(a)||s.turn===a.id))amount++;if(complete(s)&&slash&&stateOf(a).turn.yijueTarget===p.id&&cards?.some(id=>cardSuitFor(a,CARD_BY_ID[id])==='H'))amount++;}
+  if(!chain&&!e.completeDamage&&!e.weaponModifiersDone&&slash&&source&&equipKind(seat(s,source),'weapon')==='guding'&&!p.hand.length){recordEquipmentCue(s,seat(s,source),'guding',p.id);amount++;}
   if(s.skillAutomation&&slash&&wine&&source&&hasSkill(seat(s,source),'酒池'))stateOf(seat(s,source)).turn.benghuaiDisabled=true;
-  if(weaponDamage(s,{...e,type:'damage',amount,weaponModifiersDone:true},'prevent'))return;const n=e.completeDamage?amount:armorDamage(s,p,amount,nature,ignoreArmor);if(beforeCompleteDamage(s,{...e,type:'damage',amount:n}))return;if(weaponDamage(s,{...e,type:'damage',amount:n,completeDamage:true},'cause'))return;p.hp-=n;event(s,'damage',{player:p.id,source,amount:n,nature});note(s,`${p.name} 受到${nature==='fire'?'火焰':nature==='thunder'?'雷电':''}伤害 ${n}（${p.hp}/${p.maxHp}）。`);
-  if(nature!=='normal'&&p.chained&&!chain){const others=alive(s).filter(x=>x.id!==p.id&&x.chained);for(const x of [p,...others])x.chained=false;
-    s.rules.queue.unshift(...others.map(x=>({type:'damage',source,target:x.id,amount:n,nature,chain:true})));}
+  if(weaponDamage(s,{...e,type:'damage',amount,weaponModifiersDone:true},'prevent'))return;const n=e.completeDamage?amount:armorDamage(s,p,amount,nature,ignoreArmor);if(beforeCompleteDamage(s,{...e,type:'damage',amount:n}))return;if(weaponDamage(s,{...e,type:'damage',amount:n,completeDamage:true},'cause'))return;p.hp-=n;const recordId=recordOutcome(s,e,n);event(s,'damage',{player:p.id,source,amount:n,nature,chain:!!chain,...(recordId?{recordId}:{})});note(s,`${p.name} 受到${nature==='fire'?'火焰':nature==='thunder'?'雷电':''}伤害 ${n}（${p.hp}/${p.maxHp}）。`);
+  if(nature!=='normal'&&p.chained)s.rules.queue.unshift({type:'finishChainDamage',source,target,amount:n,nature,chain,slash,duel,card,cards,color,useKey,wine,cardKind:e.cardKind});
   wounded(s,p,source);
   if(s.skillAutomation&&useKey){s.skillUseDamage??={};s.skillUseDamage[useKey]=(s.skillUseDamage[useKey]||0)+n;}afterDamageSkills(s,{source,target,amount:n,card,cards,kind:slash?'sha':duel?'juedou':null,color,useKey});
 }
@@ -72,7 +92,7 @@ export function canCounter(s,p,q=s.rules.pending){
  if(!q||q.kind!=='counter'||p.dead||!q.players.includes(p.id))return false;
  if(s.skillAutomation&&p.skillState?.turn?.noMoreUse)return false;
  for(const id of [...(p.hand||[]),...storedCards(p),...p.equip])for(const as of [null,'wuxie'])try{validateResponse(s,p,{cards:[id],as});return true;}catch{}
- return !!(s.completeSkills&&s.skillAutomation&&hasSkill(p,'蛊惑')&&!p.skillState?.used['蛊惑']&&p.hand?.length&&!p.skillState?.turn?.handBlocked);
+ return !!(s.completeSkills&&s.skillAutomation&&hasSkill(p,'蛊惑')&&!p.skillState?.used['蛊惑']&&bluffMaterials(p).length);
 }
 function settleCounter(s){
  const q=s.rules.pending;if(!experience(s)||q?.kind!=='counter')return false;
@@ -87,14 +107,21 @@ function openJudge(s,e){
 
 export function pump(s){
   let limit=0;
-  observeCompleteMoves(s);prepareBlindChoice(s,s.rules.pending);settleCounter(s);
+  refreshOpportunities(s);
+  observeCompleteMoves(s);prepareBlindChoice(s,s.rules.pending);settleCounter(s);repairSaveWindow(s);settleSaviors(s);
   while(!s.rules.pending&&s.rules.queue.length&&s.status==='playing'){
     check(++limit<100,'结算队列异常');const e=s.rules.queue.shift();
-    if(e.target&&seat(s,e.target).dead&&e.type!=='completeShenshiDeath')continue;
+    if(e.type==='phaseGate'){
+      const w=s.flow?.skillWindow;
+      if(w?.phaseKey===e.phaseKey&&w.offers.length){s.rules.queue.unshift(e);break;}
+      if(w?.phaseKey===e.phaseKey)delete s.flow.skillWindow;
+      continue;
+    }
+    if(e.target&&seat(s,e.target).dead&&!['completeShenshiDeath','finishChainDamage'].includes(e.type))continue;
     if(s.skillAutomation&&e.target){const t=seat(s,e.target);if(e.cardKind&&hasSkill(t,'帷幕')&&e.cards?.length&&!e.cards.some(id=>s.hiddenMaterials?.[id])&&e.cards.every(id=>!cardRedFor(seat(s,e.source),CARD_BY_ID[id]))){note(s,`${t.name} 的帷幕使黑色锦囊对其无效。`);continue;}
       if(['slash','duel'].includes(e.type)&&(!complete(s)||e.type!=='slash'||e.skillPrepared)&&hasSkill(t,'父荫')&&!e.fuyinChecked){e.fuyinChecked=true;const st=stateOf(t);if(!st.turn.fuyinSeen){st.turn.fuyinSeen=true;if((e.targetHand??t.hand.length)<=(e.sourceHand??handCount(seat(s,e.source)))){note(s,`${t.name} 的父荫使本回合首次杀或决斗对其无效。`);continue;}}}
     }
-    if(completeBeforeEffect(s,e)){if(s.completeUses?.[e.useKey]?.nullTargets?.includes(e.target))recordEffect(s,e,'canceled');continue;}
+    if(completeBeforeEffect(s,e)){if(s.completeUses?.[e.useKey]?.nullTargets?.includes(e.target))recordEffect(s,e,'canceled','skill');continue;}
     if(e.counter){const effect={...e};delete effect.counter;counter(s,effect);if(settleCounter(s))continue;break;}
     const p=e.target?seat(s,e.target):null;
     if(e.type!=='heal'&&(e.cardKind||['slash','chain','borrow','fire','aoe'].includes(e.type)))recordEffect(s,e,'active');
@@ -106,21 +133,23 @@ export function pump(s){
         if(s.skillAutomation){const src=seat(s,e.source);if(stateOf(src).turn.zhangjiang&&e.color==='red')e.noDodge=true;}
 
         if(beforeWeaponSlash(s,e))break;
-        if(!e.ignoreArmor&&(equipKind(p,'armor')==='renwang'&&(e.color||(!red(CARD_BY_ID[e.card])?'black':'red'))==='black'||equipKind(p,'armor')==='tengjia'&&e.nature==='normal')){note(s,`${p.name} 的防具抵消杀。`);break;}
+        if(!e.ignoreArmor&&(equipKind(p,'armor')==='renwang'&&(e.color||(!red(CARD_BY_ID[e.card])?'black':'red'))==='black'||equipKind(p,'armor')==='tengjia'&&e.nature==='normal')){recordEffect(s,e,'canceled','armor',equipKind(p,'armor'));note(s,`${p.name} 的防具抵消杀。`);break;}
         if(e.noDodge){s.rules.queue.unshift({...e,type:'damage',slash:true});break;}
         const a=seat(s,e.source),double=hasSkill(a,'无双')||s.skillAutomation&&(hasSkill(a,'肉林')&&GENERAL_MAP[p.skillState?.avatar?.general||p.general]?.gender==='女'||hasSkill(p,'肉林')&&GENERAL_MAP[a.skillState?.avatar?.general||a.general]?.gender==='女');pending(s,{kind:'slash',player:p.id,required:'shan',remaining:double?2:1,...e});break;
       }
       case 'duel':pending(s,{kind:'duel',player:p.id,opponent:e.source,source:e.source,required:'sha',remaining:hasSkill(seat(s,e.source),'无双')?2:1,card:e.card,cards:e.cards,useKey:e.useKey});break;
-      case 'aoe':if(equipKind(p,'armor')==='tengjia'||s.skillAutomation&&e.kind==='nanman'&&(hasSkill(p,'祸首')||hasSkill(p,'巨象'))){note(s,`${p.name} 的防具或技能抵消${e.kind==='nanman'?'南蛮入侵':'万箭齐发'}。`);break;}if(s.skillAutomation&&e.kind==='nanman'){const owner=alive(s).find(t=>hasSkill(t,'祸首'));if(owner)e.source=owner.id;}if(e.unrespondable){s.rules.queue.unshift({...e,type:'damage',amount:1});break;}pending(s,{kind:'aoe',player:p.id,required:e.kind==='nanman'?'sha':'shan',source:e.source,remaining:1,card:e.card,cards:e.cards,useKey:e.useKey,cardKind:e.kind,luanji:!!e.luanji});break;
+      case 'aoe':if(equipKind(p,'armor')==='tengjia'||s.skillAutomation&&e.kind==='nanman'&&(hasSkill(p,'祸首')||hasSkill(p,'巨象'))){recordEffect(s,e,'canceled',equipKind(p,'armor')==='tengjia'?'armor':'skill',equipKind(p,'armor')==='tengjia'?'tengjia':hasSkill(p,'祸首')?'祸首':'巨象');note(s,`${p.name} 的防具或技能抵消${e.kind==='nanman'?'南蛮入侵':'万箭齐发'}。`);break;}if(s.skillAutomation&&e.kind==='nanman'){const owner=alive(s).find(t=>hasSkill(t,'祸首'));if(owner)e.source=owner.id;}if(e.unrespondable){s.rules.queue.unshift({...e,type:'damage',amount:1});break;}pending(s,{kind:'aoe',player:p.id,required:e.kind==='nanman'?'sha':'shan',source:e.source,remaining:1,card:e.card,cards:e.cards,useKey:e.useKey,cardKind:e.kind,luanji:!!e.luanji});break;
       case 'draw':note(s,`${p.name} 摸 ${drawCards(s,p,e.n)} 张牌。`);break;
       case 'heal':{const before=p.hp;p.hp=Math.min(p.maxHp,p.hp+1);if(p.hp>before)event(s,'heal',{player:p.id,amount:p.hp-before});note(s,`${p.name} 回复体力至 ${p.hp}。`);break;}
+      case 'finishChainDamage':{const chainBefore=s.players.filter(p=>p.chained&&!p.dead).map(p=>p.id);p.chained=false;recordEffect(s,{...e,type:'chain',chainBefore,chainAfter:s.players.filter(p=>p.chained&&!p.dead).map(p=>p.id)},'resolved');if(!e.chain){const others=order(s).filter(id=>id!==p.id&&seat(s,id).chained);s.rules.queue.unshift(...others.map(id=>({...e,type:'chainDamage',target:id,chain:true,weaponModifiersDone:true})));}break;}
+      case 'chainDamage':if(p.chained)damage(s,{...e,type:'damage',ignoreArmor:false});break;
       case 'damage':damage(s,e);break;
-      case 'chain':if(s.skillAutomation&&hasSkill(p,'谦节')){note(s,`${p.name} 的谦节防止横置。`);break;}p.chained=!p.chained;note(s,`${p.name} ${p.chained?'横置':'重置'}武将牌。`);break;
+      case 'chain':if(s.skillAutomation&&hasSkill(p,'谦节')){recordEffect(s,e,'canceled','skill','谦节');note(s,`${p.name} 的谦节防止横置。`);break;}const chainBefore=s.players.filter(p=>p.chained&&!p.dead).map(p=>p.id);p.chained=!p.chained;recordEffect(s,{...e,chainBefore,chainAfter:s.players.filter(p=>p.chained&&!p.dead).map(p=>p.id)},'resolved');note(s,`${p.name} ${p.chained?'横置':'重置'}武将牌。`);break;
       case 'steal':case 'dismantle':if(p.hand.length+p.equip.length+p.judge.length)pending(s,{kind:'chooseCard',player:e.source,target:e.target,operation:e.type});break;
       case 'fire':if(p.hand.length)pending(s,{kind:'fireShow',player:p.id,source:e.source,target:p.id,useKey:e.useKey});break;
       case 'borrow':pending(s,{kind:'borrow',player:p.id,source:e.source,target:e.victim,required:'sha',remaining:1});break;
       case 'market':if(s.rules.market.length)pending(s,{kind:'market',player:p.id,available:[...s.rules.market]});break;
-      case 'delay':{const owner=seat(s,e.owner),i=s.pool.indexOf(e.card);if(i>=0)s.pool.splice(i,1);owner.judge.push(e.card);s.delayKinds[e.card]=e.kind;(s.delaySources??={})[e.card]=e.source;note(s,`${owner.name} 判定区加入${CARD_MAP[e.kind].name}。`);break;}
+      case 'delay':{const owner=seat(s,e.owner),i=s.pool.indexOf(e.card);if(i>=0)s.pool.splice(i,1);owner.judge.push(e.card);cardMotion(s,[e.card],{zone:'center'},{zone:'judge',owner:owner.id},{actor:e.source,publicFace:true,kind:e.kind,recordId:(s.turnLedger||s.centerPlays||[]).find(r=>r.useKey===e.useKey)?.id});s.delayKinds[e.card]=e.kind;(s.delaySources??={})[e.card]=e.source;note(s,`${owner.name} 判定区加入${CARD_MAP[e.kind].name}。`);break;}
       case 'judge':{
         if(experience(s)){s.flow.needsContinue=phaseToken(s);pending(s,{kind:'judgeAwait',windowId:`${s.rev}:judge:${crypto.randomUUID()}`,player:e.target,purpose:e.purpose||'generic',delayed:e.delayed||null,internal:e});}
         else openJudge(s,e);break;
@@ -145,7 +174,7 @@ export function pump(s){
       case 'completeVirtualSlash':{const actor=seat(s,e.owner),victim=seat(s,e.target);check(!(hasSkill(victim,'空城')&&!victim.hand.length),'空城：不能指定该目标');prepareUseSkills(s,actor,'sha',[],[victim]);s.rules.queue.push({type:'slash',source:actor.id,target:victim.id,cards:[],amount:1,nature:'normal'},{type:'skillAfterUse',owner:actor.id,kind:'sha',cards:[],targets:[victim.id]});break;}
       case 'completeUseField':useCard(s,seat(s,e.owner),{cards:[e.card],as:'shun',targets:[e.target]},'shun');break;
       case 'completeBluffValidate':{const actor=seat(s,e.owner);if(e.resume){s.rules.pending=e.resume;validateResponse(s,actor,{cards:e.cards,as:e.kind},e.kind);s.rules.pending=null;}else validateUse(s,actor,{cards:e.cards,as:e.kind,targets:e.targets},e.kind,{bluff:true});beginBluff(s,e);break;}
-      case 'completeBluffUse':{const actor=seat(s,e.owner);if(e.resume){s.rules.pending=e.resume;ruleAction(s,actor,{type:'respond',cards:e.cards,as:e.kind},e.kind);}else useCard(s,actor,{cards:e.cards,as:e.kind,targets:e.targets},e.kind,{bluff:true});break;}
+      case 'completeBluffUse':{const actor=seat(s,e.owner);restoreBluffMaterial(s,actor,e);if(e.resume){s.rules.pending=e.resume;ruleAction(s,actor,{type:'respond',cards:e.cards,as:e.kind},e.kind,true);}else useCard(s,actor,{cards:e.cards,as:e.kind,targets:e.targets},e.kind,{bluff:true});break;}
       case 'completeFinishUse':completeFinishedCards(s,finishSelectedCards(s,e.cards),e.cards);settleHiddenMaterials(s);endHiddenMaterials(s,e.cards);break;
       case 'completePhaseBody':enterPhaseBody(s,seat(s,e.owner));break;
       case 'completePhaseSkills':completePhase(s,seat(s,e.owner),e.phase,true);break;
@@ -158,9 +187,43 @@ export function pump(s){
       case 'phaseAdvance':advancePhase(s,seat(s,e.actor),e.nextTurn,true);break;
       case 'drawPhase':{const count=drawPhaseCount(s,p);if(tactile(s)&&count>0){s.flow.draw={id:`${s.rev}:draw`,player:p.id,remaining:count};break;}note(s,`${p.name} 摸 ${drawCards(s,p,count)} 张牌。`);if(stateOf(p).turn.haoshi&&p.hand.length>5){const min=Math.min(...alive(s).filter(t=>t.id!==p.id).map(t=>t.hand.length));s.rules.queue.unshift({type:'skillTask',owner:p.id,skill:'好施',stage:'haoshiGive',info:{targets:alive(s).filter(t=>t.id!==p.id&&t.hand.length===min).map(t=>t.id),n:Math.floor(p.hand.length/2)}});}break;}
     }
-    observeCompleteMoves(s);prepareBlindChoice(s,s.rules.pending);settleCounter(s);
+    captureOpportunity(s,e);observeCompleteMoves(s);prepareBlindChoice(s,s.rules.pending);settleCounter(s);repairSaveWindow(s);settleSaviors(s);
   }
   if(!s.rules.pending&&!s.rules.queue.length){finishCards(s);observeCompleteMoves(s);if(s.rules.queue.length&&s.status==='playing')pump(s);}
+  markDrawCompleted(s);
+}
+function runOpportunity(s,task){if(task.type==='completeSkill')processComplete(s,task);else processSkillTask(s,task);}
+export function recoverPhaseOpportunity(s){
+  const q=s.rules.pending;if(!experience(s)||!q?.optional||q.player!==s.turn||q.kind!=='skill')return;
+  let task=null;
+  if(['巧变','神速'].includes(q.skill)&&q.stage===`complete:${s.phase}`||q.skill==='放权'&&s.phase===3&&q.stage==='complete:offer')task={type:'completeSkill',owner:s.turn,skill:q.skill,step:q.stage.slice(9),data:q.internal||{}};
+  if(s.phase===2&&['stealDraw','bare','revealBare','haoshi','shuangxiong','drawBonus','replaceDraw'].includes(q.stage))task={type:'skillTask',owner:s.turn,skill:q.skill};
+  if(task){captureOpportunity(s,{...task,phaseOffer:'restored'});s.rules.queue.unshift({type:'phaseGate',owner:s.turn,phaseKey:stageKey(s)});}
+}
+function refreshOpportunities(s){
+  const w=s.flow?.skillWindow;if(!w)return;
+  if(w.phaseKey!==stageKey(s)||s.status!=='playing'){delete s.flow.skillWindow;return;}
+  w.offers=w.offers.filter(o=>{
+    if(!stillHasOpportunity(s,o))return false;
+    const preview=structuredClone(s);preview.rules.pending=null;preview.rules.queue=[];runOpportunity(preview,structuredClone(o.task));
+    const q=preview.rules.pending;if(!q?.optional||!feasiblePrompt(q))return false;
+    o.prompt=q;return true;
+  });
+}
+export function closeOpportunities(s,p,windowId=null){
+  const w=s.flow?.skillWindow;check(w&&w.owner===p.id&&(!windowId||w.id===windowId),'阶段技能机会已变化，请同步后重试');
+  check(!s.rules.pending,'请先完成当前选择');const key=w.phaseKey;
+  for(let n=0;n<12&&s.flow?.skillWindow?.phaseKey===key;n++){
+    s.flow.skillWindow.offers=[];pump(s);if(s.rules.pending)break;
+  }
+  return key;
+}
+function startOpportunity(s,p,a){
+  const w=s.flow?.skillWindow;check(w&&w.id===a.windowId&&w.owner===p.id&&!s.rules.pending,'阶段技能机会已变化，请同步后重试');
+  refreshOpportunities(s);const i=w.offers.findIndex(o=>o.skill===a.skill);check(i>=0,'当前没有此技能的发动机会');
+  const [o]=w.offers.splice(i,1);runOpportunity(s,o.task);
+  check(s.rules.pending?.optional&&feasiblePrompt(s.rules.pending),'技能条件已变化，请重新选择');
+  s.rules.pending.phaseOpportunity=true;s.rules.pending.internal??={};s.rules.pending.internal.phaseOfferTask=o.task;
 }
 function commitPindian(s,p,id){
   const q=s.rules.pending;check(q.kind==='pindian'&&q.players.includes(p.id),'你不参与此次拼点');check(!s.rules.commits[p.id],'你已经选牌');removeOwned(s,p,[id],{handOnly:true,reason:'use'});s.rules.commits[p.id]=[id];note(s,`${p.name} 已选择拼点牌。`);
@@ -171,9 +234,9 @@ function commitPindian(s,p,id){
   }
 }
 export function cancelResolution(s){
-  if(s.flow){delete s.flow.draw;s.flow.paused=true;}
+  if(s.flow){delete s.flow.draw;delete s.flow.drawCompleted;s.flow.paused=true;}
   for(const [id,cards]of Object.entries(s.rules.commits))seat(s,id).hand.push(...cards);
-  for(const p of s.players)if(p.skillState?.concealed?.length){p.hand.push(...p.skillState.concealed);p.skillState.concealed=[];}
+  for(const p of s.players)if(p.skillState?.concealed?.length){const st=p.skillState,dest=p.dead?s.discard:st.concealedOrigin?.zone==='wood'&&p.wood?.treasure===st.concealedOrigin.treasure?p.wood.cards:p.hand;dest.push(...st.concealed);st.concealed=[];delete st.concealedOrigin;}
   s.rules.privateChoices={};s.rules.commits={};s.rules.pending=null;s.rules.queue=[];s.rules.resolving=[];s.rules.market=[];
 }
 function clearDelayed(s,p,id,purpose,passLightning=false){
@@ -236,22 +299,27 @@ export function validateUse(s,p,a,virtualKind=null,{bluff=false}={}){
   }
   return {kind,def,ids,targets,t};
 }
+export function publicEffectTargets(s,p,kind,ids,targets=[]){
+  let affected=['nanman','wanjian'].includes(kind)?order(s,p.id).slice(1):['taoyuan','wugu'].includes(kind)?order(s,p.id):CARD_MAP[kind].slot?[p.id]:targets.map(x=>x.id);
+  if(s.skillAutomation&&['nanman','wanjian','taoyuan','wugu'].includes(kind))affected=affected.filter(id=>{const victim=seat(s,id);return !(hasSkill(victim,'帷幕')&&!ids.some(id=>s.hiddenMaterials?.[id])&&ids.every(id=>!cardRedFor(p,CARD_BY_ID[id])))&&(!hasSkill(p,'掣政')||victim.id===p.id||distance(s,victim.id,p.id)<=attackRange(victim))&&!stateOf(p).turn.noTargets?.includes(victim.id);});
+  return affected;
+}
 export function useCard(s,p,a,virtualKind=null,flags={}){
   const {kind,def,ids,targets,t}=validateUse(s,p,a,virtualKind,flags),useKey=s.rev+':'+ids.join('.');
   if(s.skillAutomation&&skillGeneral(p,'国色')==='jie_daqiao'&&a.as==='le')stateOf(p).used.guose=1;
-  let affected=['nanman','wanjian'].includes(kind)?order(s,p.id).slice(1):['taoyuan','wugu'].includes(kind)?order(s,p.id):def.slot?[p.id]:targets.map(x=>x.id);
-  if(s.skillAutomation&&['nanman','wanjian','taoyuan','wugu'].includes(kind))affected=affected.filter(id=>{const victim=seat(s,id);return !(hasSkill(victim,'帷幕')&&!ids.some(id=>s.hiddenMaterials?.[id])&&ids.every(id=>!cardRedFor(p,CARD_BY_ID[id])))&&(!hasSkill(p,'掣政')||victim.id===p.id||distance(s,victim.id,p.id)<=attackRange(victim))&&!stateOf(p).turn.noTargets?.includes(victim.id);});
+  const affected=publicEffectTargets(s,p,kind,ids,targets);
   check(affected.length>0,'没有合法的受影响目标');const skillTargets=affected.map(id=>seat(s,id));
   event(s,'use',{source:p.id,player:affected[0],targets:affected,cardKind:kind});
   if(isSlash(kind)){
-    useCards(s,p,ids,kind,skillTargets);const free=s.skillAutomation&&ids.length>0&&ids.every(id=>stateOf(p).turn.freeSuits?.includes(CARD_BY_ID[id].suit));if(!free)s.rules.slash++;const wine=s.rules.drank>0,damage=1+s.rules.drank;s.rules.drank=0;
+    useCards(s,p,ids,kind,skillTargets,{prepaid:!!flags.bluff});const free=s.skillAutomation&&ids.length>0&&ids.every(id=>stateOf(p).turn.freeSuits?.includes(CARD_BY_ID[id].suit));if(!free)s.rules.slash++;const wine=s.rules.drank>0,damage=1+s.rules.drank;s.rules.drank=0;
     const color=ids.some(id=>s.hiddenMaterials?.[id])?'none':ids.length?ids.every(id=>cardRedFor(p,CARD_BY_ID[id]))?'red':ids.every(id=>!cardRedFor(p,CARD_BY_ID[id]))?'black':'none':'none';
+    const weapon=equipKind(p,'weapon');if(['liannu','qinggang','zhangba','fangtian','zhuque'].includes(weapon)&&(weapon!=='zhangba'||ids.length===2)&&(weapon!=='fangtian'||targets.length>1)&&(weapon!=='zhuque'||kind==='fire_sha'))recordEquipmentCue(s,p,weapon,weapon==='qinggang'?targets[0]?.id:p.id);
     for(const victim of targets)s.rules.queue.push({type:'slash',source:p.id,target:victim.id,card:ids[0],cards:[...ids],useKey,sourceHand:p.hand.length,targetHand:handCount(victim),color,wine,amount:damage,nature:natureOf(kind),ignoreArmor:equipKind(p,'weapon')==='qinggang'});
-  }else if(kind==='tao'){useCards(s,p,ids,kind,skillTargets);const lord=complete(s)&&GENERAL_MAP_SAFE(p,null)==='吴'?alive(s).find(x=>x.id!==p.id&&x.role==='lord'&&skillGeneral(x,'救援')==='jie_sunquan'&&hasSkill(x,'救援')&&p.hp>x.hp):null;if(lord)s.rules.queue.push({type:'completeRescueOffer',owner:p.id,lord:lord.id});else {p.hp++;event(s,'heal',{player:p.id,amount:1});}}
-  else if(kind==='jiu'){check(t?.id===p.id,'酒只能对自己使用');check(!s.rules.wineUsed,'本回合已使用酒');useCards(s,p,ids,kind,skillTargets);s.rules.wineUsed=true;s.rules.drank=1;note(s,'本回合下一张杀伤害基数 +1。');}
-  else if(def.slot){check(ids.length===1,'一次装备一张');useCards(s,p,ids,kind,skillTargets);const old=p.equip.find(id=>CARD_MAP[CARD_BY_ID[id].kind].slot===def.slot);if(old){removeOwned(s,p,[old]);s.discard.push(old);}s.pool.splice(s.pool.indexOf(ids[0]),1);p.equip.push(ids[0]);}
+  }else if(kind==='tao'){useCards(s,p,ids,kind,skillTargets,{prepaid:!!flags.bluff});const lord=complete(s)&&GENERAL_MAP_SAFE(p,null)==='吴'?alive(s).find(x=>x.id!==p.id&&x.role==='lord'&&skillGeneral(x,'救援')==='jie_sunquan'&&hasSkill(x,'救援')&&p.hp>x.hp):null;if(lord)s.rules.queue.push({type:'completeRescueOffer',owner:p.id,lord:lord.id});else {p.hp++;event(s,'heal',{player:p.id,amount:1});}}
+  else if(kind==='jiu'){check(t?.id===p.id,'酒只能对自己使用');check(!s.rules.wineUsed,'本回合已使用酒');useCards(s,p,ids,kind,skillTargets,{prepaid:!!flags.bluff});s.rules.wineUsed=true;s.rules.drank=1;note(s,'本回合下一张杀伤害基数 +1。');}
+  else if(def.slot){check(ids.length===1,'一次装备一张');useCards(s,p,ids,kind,skillTargets,{prepaid:!!flags.bluff});const old=p.equip.find(id=>CARD_MAP[CARD_BY_ID[id].kind].slot===def.slot);if(old){removeOwned(s,p,[old]);s.discard.push(old);}s.pool.splice(s.pool.indexOf(ids[0]),1);p.equip.push(ids[0]);cardMotion(s,ids,{zone:'center'},{zone:'equip',owner:p.id},{actor:p.id,publicFace:true,kind,recordId:s.lastPublicPlay?.[p.id]?.id});}
   else {
-    useCards(s,p,ids,kind,skillTargets);const e=(type,target=t?.id,extra={})=>({type,source:p.id,target,counter:true,cardKind:kind,card:ids[0],cards:[...ids],sourceHand:p.hand.length,targetHand:target?handCount(seat(s,target)):0,useKey:useKey,...extra});
+    useCards(s,p,ids,kind,skillTargets,{prepaid:!!flags.bluff});const e=(type,target=t?.id,extra={})=>({type,source:p.id,target,counter:true,cardKind:kind,card:ids[0],cards:[...ids],sourceHand:p.hand.length,targetHand:target?handCount(seat(s,target)):0,useKey:useKey,...extra});
     if(kind==='wuzhong')s.rules.queue.push(e('draw',p.id,{n:2}));
     else if(kind==='juedou')s.rules.queue.push(e('duel'));
     else if(kind==='chai'||kind==='shun')s.rules.queue.push(e(kind==='chai'?'dismantle':'steal'));
@@ -277,28 +345,37 @@ export function validateResponse(s,p,a,authorizedKind=null){
   if(q.kind==='counter'){check(q.players?.includes(p.id)||q.canRespond===true,'你不能响应');check(ids.length===1&&(authorizedKind||effectiveKind(p,ids,a.as||null))==='wuxie'&&(a.as||isUsableHand(p,ids[0])),'需要无懈可击或合法转化');return;}
   check(q.player===p.id,'请等待对应玩家响应');
   if(q.kind==='fireShow'){check(ids.length===1&&p.hand.includes(ids[0]),'展示一张手牌');return;}
-  if(q.kind==='firePay'){check(ids.length===1&&p.hand.includes(ids[0])&&CARD_BY_ID[ids[0]].suit===q.suit,'须弃置同花色手牌');return;}
+  if(q.kind==='firePay'){check(ids.length===1&&p.hand.includes(ids[0])&&cardSuitFor(p,CARD_BY_ID[ids[0]])===q.suit,'须弃置同花色手牌');return;}
   const kind=authorizedKind||effectiveKind(p,ids,a.as||null);
   if(q.kind==='borrow'&&q.skill==='青龙偃月刀'){const victim=seat(s,q.target);check(!victim.dead&&!(hasSkill(victim,'空城')&&!handCount(victim))&&!p.skillState?.turn?.noMoreUse,'当前不能对该目标追加杀');}
   if(q.kind==='borrow'&&q.skill==='挑衅')attackAllowed(s,p,seat(s,q.target),ids);
   if(!a.as)check(ids.every(id=>isUsableHand(p,id)),'请从手牌响应，装备仅可用于合法转化');
-  if(q.kind==='save'){check(ids.length===1&&(kind==='tao'||kind==='jiu'&&q.target===p.id),'仅桃或濒死者自己的酒可救援');if(a.as==='tao'&&!authorizedKind)check(s.turn!==p.id,'急救只能在回合外使用');return;}
+  if(q.kind==='save'){check(!wanshaActive(s)||p.id===s.turn||p.id===q.target,'完杀：仅当前回合角色与濒死者可救援');check(ids.length===1&&(kind==='tao'||kind==='jiu'&&q.target===p.id),'仅桃或濒死者自己的酒可救援');if(a.as==='tao'&&!authorizedKind)check(s.turn!==p.id,'急救只能在回合外使用');return;}
   check(['slash','duel','aoe','borrow'].includes(q.kind),'当前事件不接受此响应');check(ids.length===1||ids.length===2&&a.as==='sha'&&equipKind(p,'weapon')==='zhangba','一次响应一张或合法转化');check(q.required==='sha'?isSlash(kind):kind===q.required,`需要${q.required==='sha'?'杀':'闪'}`);
 }
 function settleResponseSkills(s,before){
   if(!complete(s)&&!s.equipmentAutomation)return;const old=new Set(before),trigger=s.rules.queue.filter(e=>!old.has(e)&&['skillTask','completeSkill','equipmentTask'].includes(e.type));if(!trigger.length)return;trigger.sort((a,b)=>(a.type==='equipmentTask')-(b.type==='equipmentTask'));
   const picked=new Set(trigger),rest=s.rules.queue.filter(e=>!picked.has(e)),resume=s.rules.pending;s.rules.pending=null;s.rules.queue=[...trigger,...(resume?[{type:'resumeResponse',response:resume}]:[]),...rest];
 }
-export function ruleAction(s,p,a,authorizedKind=null){
+export function ruleAction(s,p,a,authorizedKind=null,prepaid=false){
   if(!active(s))return false;
+  if(s.flow?.skillWindow&&['use','drawPhaseCard','revealJudge','recast','discard','storeWood'].includes(a.type)){
+    const old=s.flow.skillWindow;check(p.id===s.turn&&(!a.phaseWindowId||a.phaseWindowId===old.id),'阶段技能窗口已变化');
+    if(a.type==='drawPhaseCard')check(a.windowId===old.id||a.windowId===s.flow.draw?.id,'摸牌窗口已变化');
+    closeOpportunities(s,p);
+    if(s.rules.pending&&!(a.type==='revealJudge'&&s.rules.pending.kind==='judgeAwait'&&s.rules.pending.player===p.id))return true;
+    if(a.type==='drawPhaseCard')a={...a,windowId:s.flow.draw?.id};
+    if(a.type==='revealJudge')a={...a,windowId:s.rules.pending?.windowId};
+  }
   switch(a.type){
+    case 'continuePhase':{const key=closeOpportunities(s,p,a.windowId);const discardDone=p.hand.length<=handLimit(s,p)||hasSkill(p,'克己')&&s.rules.slash===0&&s.rules.slashPlayed===0;if(!s.rules.pending&&stageKey(s)===key&&!s.flow?.draw?.remaining&&s.phase!==3&&(s.phase!==4||discardDone))advancePhase(s,p);break;}
     case 'storeWood':storeWood(s,p,a);break;
     case 'drawPhaseCard':{idle(s);const d=s.flow?.draw;check(tactile(s)&&s.phase===2&&s.turn===p.id&&d?.player===p.id&&d.id===a.windowId&&d.remaining>0,'当前没有你的逐张摸牌额度');const n=drawCards(s,p,1);d.remaining=n?d.remaining-1:0;note(s,`${p.name} 摸 ${n} 张牌。`);if(!d.remaining){if(stateOf(p).turn.haoshi&&p.hand.length>5){const min=Math.min(...alive(s).filter(t=>t.id!==p.id).map(t=>t.hand.length));s.rules.queue.push({type:'skillTask',owner:p.id,skill:'好施',stage:'haoshiGive',info:{targets:alive(s).filter(t=>t.id!==p.id&&t.hand.length===min).map(t=>t.id),n:Math.floor(p.hand.length/2)}});}}break;}
     case 'flowPause':check(tactile(s)&&(p.id===s.turn||p.id===s.hostId),'只有当前玩家或房主可暂停推进');check(typeof a.paused==='boolean','暂停值无效');s.flow.paused=a.paused;break;
     case 'revealJudge':{const q=s.rules.pending;check(experience(s)&&q?.kind==='judgeAwait'&&q.player===p.id&&q.windowId===a.windowId,'当前没有由你翻开的判定');s.rules.pending=null;openJudge(s,q.internal);break;}
     case 'setAutoAdvance':check(experience(s)&&s.status==='playing'&&s.turn===p.id&&typeof a.enabled==='boolean','只能设置本人当前回合的自动推进');p.autoAdvanceEnabled=a.enabled;s.flow.paused=false;break;
-    case 'activateSkill':if(!['护驾','激将','涅槃','蛊惑','黄天','制霸'].includes(a.skill)&&s.equipmentAutomation)validateActiveIntent(s,p,a);if(!activateComplete(s,p,a))activateSkill(s,p,a);break;
-    case 'skillResolve':if(s.rules.pending?.stage?.startsWith('equipment:')){const rest=s.rules.queue;s.rules.queue=[];resolveEquipment(s,p,a);observeCompleteMoves(s);const triggers=s.rules.queue.filter(e=>['skillTask','completeSkill'].includes(e.type)),continuations=s.rules.queue.filter(e=>!triggers.includes(e));s.rules.queue=[...triggers,...continuations,...rest];}else resolveSkill(s,p,a);break;
+    case 'activateSkill':if(a.windowId){startOpportunity(s,p,a);break;}if(s.flow?.skillWindow&&p.id===s.turn){closeOpportunities(s,p);if(s.rules.pending)return true;}if(!['护驾','激将','涅槃','蛊惑','黄天','制霸'].includes(a.skill)&&s.equipmentAutomation)validateActiveIntent(s,p,a);if(!activateComplete(s,p,a))activateSkill(s,p,a);if(s.rules.pending?.kind==='skill')s.rules.pending.activationStarted=true;break;
+    case 'skillResolve':if(a.choice==='decline'&&s.rules.pending?.internal?.phaseOfferTask){const q=s.rules.pending;check(q.player===p.id&&q.optional,'不能取消此步骤');s.flow.skillWindow.offers.push({skill:q.skill,task:q.internal.phaseOfferTask,prompt:{...q,phaseOpportunity:undefined}});s.rules.pending=null;break;}if(s.rules.pending?.stage?.startsWith('equipment:')){const rest=s.rules.queue;s.rules.queue=[];resolveEquipment(s,p,a);observeCompleteMoves(s);const triggers=s.rules.queue.filter(e=>['skillTask','completeSkill'].includes(e.type)),continuations=s.rules.queue.filter(e=>!triggers.includes(e));s.rules.queue=[...triggers,...continuations,...rest];}else resolveSkill(s,p,a);break;
     case 'use':useCard(s,p,a);return true;
     case 'respond':{
       validateResponse(s,p,a,authorizedKind);
@@ -306,19 +383,19 @@ export function ruleAction(s,p,a,authorizedKind=null){
       if(q.kind==='pindian'){check(ids.length===1,'拼点选择一张');commitPindian(s,p,ids[0]);break;}
       event(s,'response',{source:p.id,player:q.target||q.source||q.player,cardKind:a.as||CARD_BY_ID[ids[0]].kind});
       if(q.kind==='counter'){
-        check(q.players.includes(p.id),'你不能响应');check(ids.length===1&&(authorizedKind||effectiveKind(p,ids,a.as||null))==='wuxie','需要无懈可击');discardResponse(s,p,ids,'wuxie');q.negated=!q.negated;q.passed=experience(s)?[]:[p.id];q.windowId=`${s.rev}:counter`;note(s,`无懈链：当前${q.negated?'抵消':'恢复'}原效果。`);if(complete(s)&&hasSkill(p,'集智'))s.rules.queue.push({type:'skillTask',owner:p.id,skill:'集智'});settleResponseSkills(s,responseQueue);break;
+        check(q.players.includes(p.id),'你不能响应');check(ids.length===1&&(authorizedKind||effectiveKind(p,ids,a.as||null))==='wuxie','需要无懈可击');discardResponse(s,p,ids,'wuxie',prepaid);q.negated=!q.negated;q.passed=experience(s)?[]:[p.id];q.windowId=`${s.rev}:counter`;note(s,`无懈链：当前${q.negated?'抵消':'恢复'}原效果。`);if(complete(s)&&hasSkill(p,'集智'))s.rules.queue.push({type:'skillTask',owner:p.id,skill:'集智'});settleResponseSkills(s,responseQueue);break;
       }
       check(q.player===p.id,'请等待对应玩家响应');
       if(q.kind==='save'){
         check(ids.length===1,'一次使用一张');const kind=authorizedKind||effectiveKind(p,ids,a.as||null);check(kind==='tao'||kind==='jiu'&&q.target===p.id,'仅桃或濒死者自己的酒可救援');
-        if(a.as==='tao'&&!authorizedKind)check(s.turn!==p.id,'急救只能在回合外使用');discardResponse(s,p,ids,kind);const dying=seat(s,q.target),beforeHp=dying.hp;dying.hp++;
+        if(a.as==='tao'&&!authorizedKind)check(s.turn!==p.id,'急救只能在回合外使用');discardResponse(s,p,ids,kind,prepaid);const dying=seat(s,q.target),beforeHp=dying.hp;dying.hp++;
         if(p.id!==dying.id&&dying.role==='lord'&&skillGeneral(dying,'救援')==='sunquan'&&hasSkill(dying,'救援')&&GENERAL_MAP_SAFE(p,null)==='吴')dying.hp++;
         event(s,'heal',{player:dying.id,source:p.id,amount:dying.hp-beforeHp});note(s,`${dying.name} 回复体力至 ${dying.hp}。`);if(dying.hp>0){delete stateOf(dying).marks.buquDying;s.rules.pending=null;}settleResponseSkills(s,responseQueue);break;
       }
-      if(q.kind==='fireShow'){check(ids.length===1&&p.hand.includes(ids[0]),'展示一张手牌');cardMotion(s,ids,{zone:'hand',owner:p.id},{zone:'judgeReveal',owner:p.id},{actor:p.id,publicFace:true,type:'show'});note(s,`${p.name} 展示 ${cardLabel(ids[0])}。`);pending(s,{kind:'firePay',player:q.source,source:q.source,target:p.id,suit:CARD_BY_ID[ids[0]].suit,shown:ids[0],useKey:q.useKey});break;}
-      if(q.kind==='firePay'){check(ids.length===1&&p.hand.includes(ids[0])&&CARD_BY_ID[ids[0]].suit===q.suit,'须弃置同花色手牌');removeOwned(s,p,ids,{handOnly:true,reason:'discard'});s.discard.push(...ids);note(s,`${p.name} 为火攻弃置${ids.map(cardLabel).join('、')}。`);s.rules.pending=null;s.rules.queue.unshift({type:'damage',source:p.id,target:q.target,nature:'fire',amount:1,cardKind:'huogong',useKey:q.useKey});settleResponseSkills(s,responseQueue);break;}
+      if(q.kind==='fireShow'){check(ids.length===1&&p.hand.includes(ids[0]),'展示一张手牌');cardMotion(s,ids,{zone:'hand',owner:p.id},{zone:'judgeReveal',owner:p.id},{actor:p.id,publicFace:true,type:'show'});note(s,`${p.name} 展示 ${cardLabel(ids[0])}。`);pending(s,{kind:'firePay',player:q.source,source:q.source,target:p.id,suit:cardSuitFor(p,CARD_BY_ID[ids[0]]),shown:ids[0],useKey:q.useKey});break;}
+      if(q.kind==='firePay'){check(ids.length===1&&p.hand.includes(ids[0])&&cardSuitFor(p,CARD_BY_ID[ids[0]])===q.suit,'须弃置同花色手牌');removeOwned(s,p,ids,{handOnly:true,reason:'discard'});s.discard.push(...ids);note(s,`${p.name} 为火攻弃置${ids.map(cardLabel).join('、')}。`);s.rules.pending=null;s.rules.queue.unshift({type:'damage',source:p.id,target:q.target,nature:'fire',amount:1,cardKind:'huogong',useKey:q.useKey});settleResponseSkills(s,responseQueue);break;}
       check(['slash','duel','aoe','borrow'].includes(q.kind),'当前事件不接受此响应');
-      const kind=authorizedKind||effectiveKind(p,ids,a.as||null);check(q.required==='sha'?isSlash(kind):kind===q.required,`需要${q.required==='sha'?'杀':'闪'}`);if((complete(s)||s.equipmentAutomation)&&q.kind==='borrow'){const victim=seat(s,q.target),rest=s.rules.queue,key=s.rev+':'+ids.join('.'),color=ids.some(id=>s.hiddenMaterials?.[id])?'none':ids.every(id=>cardRedFor(p,CARD_BY_ID[id]))?'red':ids.every(id=>!cardRedFor(p,CARD_BY_ID[id]))?'black':'none';s.rules.pending=null;s.rules.queue=[];useCards(s,p,ids,kind,[victim]);s.rules.queue.push({type:'slash',source:p.id,target:victim.id,card:ids[0],cards:[...ids],amount:1,nature:natureOf(kind),ignoreArmor:equipKind(p,'weapon')==='qinggang',color,useKey:key},{type:'skillAfterUse',owner:p.id,kind,cards:[...ids],targets:[victim.id],useKey:key},{type:'completeFinishUse',cards:[...ids]},...rest);settleResponseSkills(s,responseQueue);break;}discardResponse(s,p,ids,kind);if(s.skillAutomation&&kind==='shan'&&hasSkill(p,'雷击'))s.rules.queue.push({type:'skillTask',owner:p.id,skill:'雷击'});if(s.skillAutomation&&q.luanji&&kind==='shan')drawCards(s,p,1);if(isSlash(kind)&&s.turn===p.id&&s.phase===3)s.rules.slashPlayed++;q.remaining--;q.baguaUsed=false;
+      const kind=authorizedKind||effectiveKind(p,ids,a.as||null);check(q.required==='sha'?isSlash(kind):kind===q.required,`需要${q.required==='sha'?'杀':'闪'}`);if((complete(s)||s.equipmentAutomation)&&q.kind==='borrow'){const victim=seat(s,q.target),rest=s.rules.queue,key=s.rev+':'+ids.join('.'),color=ids.some(id=>s.hiddenMaterials?.[id])?'none':ids.every(id=>cardRedFor(p,CARD_BY_ID[id]))?'red':ids.every(id=>!cardRedFor(p,CARD_BY_ID[id]))?'black':'none';s.rules.pending=null;s.rules.queue=[];useCards(s,p,ids,kind,[victim]);s.rules.queue.push({type:'slash',source:p.id,target:victim.id,card:ids[0],cards:[...ids],amount:1,nature:natureOf(kind),ignoreArmor:equipKind(p,'weapon')==='qinggang',color,useKey:key},{type:'skillAfterUse',owner:p.id,kind,cards:[...ids],targets:[victim.id],useKey:key},{type:'completeFinishUse',cards:[...ids]},...rest);settleResponseSkills(s,responseQueue);break;}discardResponse(s,p,ids,kind,prepaid);if(s.skillAutomation&&kind==='shan'&&hasSkill(p,'雷击'))s.rules.queue.push({type:'skillTask',owner:p.id,skill:'雷击'});if(s.skillAutomation&&q.luanji&&kind==='shan')drawCards(s,p,1);if(isSlash(kind)&&s.turn===p.id&&s.phase===3)s.rules.slashPlayed++;q.remaining--;q.baguaUsed=false;
       if(q.remaining<=0){
         if(q.kind==='duel'){const opponent=q.opponent;q.opponent=p.id;q.player=opponent;q.remaining=hasSkill(p,'无双')?2:1;}
         else if(q.kind==='borrow'){s.rules.pending=null;s.rules.queue.unshift({type:'slash',source:p.id,target:q.target,card:ids[0],amount:1,nature:natureOf(kind),ignoreArmor:equipKind(p,'weapon')==='qinggang'});}
@@ -367,6 +444,7 @@ export function ruleAction(s,p,a,authorizedKind=null){
 import {GENERAL_MAP} from '../data/generals.js';
 function GENERAL_MAP_SAFE(p,skill){return skill?hasSkill(p,skill):GENERAL_MAP[p.skillState?.avatar?.general||p.general]?.faction;}
 export function advancePhase(s,p,nextTurn=false,prepared=false){
+  if(s.flow?.skillWindow){check(!nextTurn,'请先完成当前阶段');const key=closeOpportunities(s,p);if(stageKey(s)!==key||s.rules.pending||s.flow?.draw?.remaining)return;}
   idle(s);check(!s.flow?.draw?.remaining,'请先点击抽牌堆完成摸牌');check(p.id===s.turn||p.id===s.hostId,'只有当前玩家或房主可推进');check(!Object.values(s.peek).some(z=>z.length),'请先放回观看牌');
   if(s.phase===4&&!stateOf(seat(s,s.turn)).turn.skipPhases?.includes(4))check(seat(s,s.turn).hand.length<=handLimit(s,seat(s,s.turn))||hasSkill(seat(s,s.turn),'克己')&&s.rules.slash===0&&s.rules.slashPlayed===0,'请先弃牌至体力上限');
   if(nextTurn){check(s.phase===5,'请依次完成回合阶段；特殊跳过可由房主纠正');}
@@ -378,7 +456,7 @@ export function advancePhase(s,p,nextTurn=false,prepared=false){
     const carry=s.rules.queue;s.turn=next;s.phase=0;s.rules={...freshRules(),lastResult:s.rules.lastResult,queue:carry};s.skillTurnNo=(s.skillTurnNo||0)+1;resetTurnSkills(s);
   }
   else s.phase++;
-  if(s.flow){delete s.flow.draw;delete s.flow.needsContinue;if(s.phase===0)s.flow.paused=false;}
+  if(s.flow){delete s.flow.draw;delete s.flow.drawCompleted;delete s.flow.skillWindow;delete s.flow.needsContinue;if(s.phase===0)s.flow.paused=false;}
   const current=seat(s,s.turn);
   if(complete(s)){completePhase(s,current,s.phase);s.rules.queue.push({type:'completePhaseBody',owner:current.id});pump(s);return;}
   enterPhaseBody(s,current);

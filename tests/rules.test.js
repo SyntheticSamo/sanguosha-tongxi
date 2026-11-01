@@ -43,7 +43,7 @@ import {GENERAL_MAP} from '../dist/data/generals.js';
 const awaitGeneralMap=()=>GENERAL_MAP;
 test('v1 saves migrate to free mode, standard deck and current schema without enabling new skills',()=>{const legacy=game();legacy.schema=1;delete legacy.mode;delete legacy.deckSet;delete legacy.rules;legacy.deck=legacy.deck.filter(id=>CARD_BY_ID[id].pack==='standard');for(const p of legacy.players)p.hand=p.hand.filter(id=>CARD_BY_ID[id].pack==='standard'); // Build a complete legacy fixture.
 const ids=new Set([...legacy.deck,...legacy.players.flatMap(p=>p.hand)]);for(const c of deckFor('standard'))if(!ids.has(c.id))legacy.deck.push(c.id);
-const migrated=migrateState(legacy);assert.equal(migrated.schema,6);assert.equal(migrated.skillAutomation,false);assert.equal(migrated.mode,'manual');assert.equal(migrated.deckSet,'standard');validateState(migrated);});
+const migrated=migrateState(legacy);assert.equal(migrated.schema,8);assert.equal(migrated.skillAutomation,false);assert.equal(migrated.mode,'manual');assert.equal(migrated.deckSet,'standard');validateState(migrated);});
 test('delay placement has no premature counter window, nullification is before judgment',()=>{
  let s=game(),a=s.players[0],b=s.players[1],le=give(s,a,'le'),wuxie=give(s,a,'wuxie');s=command(s,'host','use',{cards:[le],target:b.id});assert.equal(s.rules.pending,null);assert(s.players[1].judge.includes(le));
  s.turn=b.id;s.phase=0;const before=s.deck.length;s=command(s,b.id,'phase');assert.equal(s.rules.pending.kind,'counter');assert.equal(s.deck.length,before);

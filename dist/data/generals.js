@@ -58,3 +58,11 @@ export const GENERALS=[...STANDARD_GENERALS.map(g=>({...g,baseName:g.name,pack:'
 export const GENERAL_MAP = Object.fromEntries(GENERALS.map(g=>[g.id,g]));
 export const ROLES = {lord:'主公',loyal:'忠臣',rebel:'反贼',spy:'内奸'};
 export const PHASES = ['准备','判定','摸牌','出牌','弃牌','结束'];
+
+// Identity descriptions match the identity-game end conditions, including dead teammates.
+export const ROLE_INFO = Object.freeze({
+ lord:{name:'主公',description:'身份公开，率领忠臣对抗反贼与内奸。',goal:'保持主公存活，消灭所有反贼和内奸。'},
+ loyal:{name:'忠臣',description:'与主公同一阵营，身份通常保密。',goal:'保护主公，协助消灭所有反贼和内奸；忠臣阵亡后仍可随阵营获胜。'},
+ rebel:{name:'反贼',description:'与其他反贼同一阵营，身份通常保密。',goal:'使主公死亡；若主公死亡时仅剩一名内奸存活，则由该内奸获胜。'},
+ spy:{name:'内奸',description:'独立阵营，身份通常保密。',goal:'成为唯一存活者：先消灭其他角色，最后击败主公；主公过早死亡会使反贼获胜。'}
+});

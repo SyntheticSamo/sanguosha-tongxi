@@ -44,7 +44,7 @@
 - 当前101将名单与版本差异在 `docs/CATALOG_VERSIONS.md`。不要按网游全将池继续扩展；增加其他包须有用户需求。增改数据同步来源说明。
 - 技能面板按版本标记主动自动、触发自动、部分自动或困难人工。增加自动效果时同步支持范围、失败场景与私密性测试，避免玩家重复结算；新手教学始终可选。
 - 2–3 人为自定义人数布局，4–8 人为标准身份布局；5 人及以上主公加 1 体力上限。
-- 当前 schema / PROTOCOL 为6。v1存档迁移到标准牌堆与自由手动模式，保留原有牌区和身份；v2升级时 `skillAutomation=false`，不把进行中的旧局改为新技能规则。v3升级v4设置 completeSkills=false；新建界面设置 completeSkills=true。v4升级v5保留原完整技能标记，设置 interactionMode=classic、equipmentAutomation=false；新建自动桌启用逐张摸牌、阶段推进与装备自动。v5升级v6保留技能及装备开关，逐张交互桌启用 tableExperience；加入手动翻判、判定后继续门槛、各席位自动设置及权威匿名选牌映射。恢复与撤销建立展示基线。未来不兼容改动需升级并迁移或明确拒绝。
+- 当前 schema / PROTOCOL 为8。v1存档迁移到标准牌堆与自由手动模式，保留原有牌区和身份；v2升级时 `skillAutomation=false`，不把进行中的旧局改为新技能规则。v3升级v4设置 completeSkills=false；新建界面设置 completeSkills=true。v4升级v5保留原完整技能标记，设置 interactionMode=classic、equipmentAutomation=false；新建自动桌启用逐张摸牌、阶段推进与装备自动。v5升级v6保留技能及装备开关，逐张交互桌启用 tableExperience；加入手动翻判、判定后继续门槛、各席位自动设置及权威匿名选牌映射。恢复与撤销建立展示基线。v6升级v7保留技能及装备范围，桌面交互桌加入本人阶段技能机会；安全的未发动阶段提示转为机会，已支付移牌刷新落点且可放弃，不重复成本、发牌或阶段效果。v7升级v8保留规则范围，旧匿名窗口直接就绪、已有桌心记录建立账本；新记录分页只走授权sync，整理提示只走授权action且不传牌序。未来不兼容改动需升级并迁移或明确拒绝。
 
 ## 修改后的检查
 
