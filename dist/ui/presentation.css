@@ -13,9 +13,9 @@
 .cinema-fire,.cinema-feather{--ink:#edac66}.cinema-thunder,.cinema-charge{--ink:#b5cfe7}
 .cinema-heal{--ink:#b9d39d}.cinema-shield,.cinema-ice,.cinema-oracle{--ink:#c5dcd3}
 .cinema-dismantle,.cinema-force,.cinema-slash{--ink:#e1ab8b}.cinema-grain,.cinema-vine{--ink:#c5c88b}
-#game .table-center #center-plays{width:var(--center-width,70vw);max-width:none;transform:translateX(var(--center-shift,0px));justify-content:safe center;gap:0;overflow-x:hidden;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#b4bea373 transparent;flex-shrink:0;padding-left:10px;padding-right:10px}
-#game .table-center #center-plays.history-overflow{overflow-x:auto;justify-content:flex-start}
-#game .table-center #center-plays .center-card{margin:0;flex-shrink:0}
+#game .table-center #center-plays{width:var(--center-width,70vw);max-width:none;pointer-events:none;transform:translateX(var(--center-shift,0px));justify-content:safe center;gap:0;overflow-x:hidden;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#b4bea373 transparent;flex-shrink:0;padding-left:10px;padding-right:10px}
+#game .table-center #center-plays.history-overflow{overflow-x:auto;justify-content:flex-start;pointer-events:auto}
+#game .table-center #center-plays .center-card{margin:0;flex-shrink:0;pointer-events:auto}
 #game .table-center #center-plays .center-card+.center-card{margin-left:calc(-1 * var(--card-overlap,8px))}
 #game #center-history-controls{display:flex;align-items:center;justify-content:center;gap:12px;min-height:0;pointer-events:auto;white-space:nowrap}
 #game #center-history-controls:empty{display:none}
@@ -32,12 +32,14 @@
 
 .pending-display{visibility:hidden!important;pointer-events:none!important}.market-fan .effect-choice{animation:none!important}
 
-#game .counter-collision{position:absolute;width:60px;height:90px;left:50%;top:50%;background:none}
+/* Each counter fragment stays attached to its own river card. */
+#game .counter-collision{position:absolute;inset:0;margin:0;width:auto;height:auto;background:none;z-index:3;pointer-events:none}
+.counter-anchor{position:absolute;display:block;pointer-events:none;perspective:450px}
 .counter-paper,.counter-rise{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;background:#eee8c9;border:2px solid #b6b289;border-radius:4px;padding:3px;color:#23483c;overflow:hidden}
 .counter-paper.left{clip-path:polygon(0 0,58% 0,46% 46%,57% 57%,43% 100%,0 100%)}
 .counter-paper.right{clip-path:polygon(58% 0,100% 0,100% 100%,43% 100%,57% 57%,46% 46%)}
-.counter-rise .card-name,.counter-paper .card-name{font-size:23px;writing-mode:vertical-rl;max-height:65px}.counter-rise .card-meta,.counter-paper .card-meta{font-size:9px;align-self:flex-start}.counter-rise .card-category,.counter-paper .card-category{font-size:7px;margin-top:auto}
-@media(max-height:500px) and (orientation:landscape){#game .counter-collision{width:25px;height:37px}.counter-rise .card-name,.counter-paper .card-name{font-size:11px;max-height:25px}.counter-rise .card-meta,.counter-paper .card-meta{font-size:5px}.counter-rise .card-category,.counter-paper .card-category{display:none}}
+.counter-anchor .card-name{font-size:var(--counter-name,23px);writing-mode:vertical-rl;max-height:75%;letter-spacing:1px}.counter-anchor .card-meta{font-size:8px;align-self:flex-start}.counter-anchor .card-category{font-size:6px;margin-top:auto}
+@media(max-height:500px) and (orientation:landscape){.counter-anchor .card-meta{font-size:5px}.counter-anchor .card-category{display:none}}
 
 .seat-flags button.status-chip{min-height:0;min-width:0;padding:0 3px;font:inherit;line-height:inherit;color:inherit;background:transparent;cursor:pointer}
 
@@ -53,3 +55,21 @@
 /* Connection flow is a single task column, including on wide screens. */
 #connect-dialog .connection-columns{display:block}#connect-dialog .connect-intro{font-size:12px;margin:10px 0}#connect-dialog label{font-size:12px}#connect-dialog .network-options{margin:10px 0;font-size:11px}#connect-dialog .network-options summary{cursor:pointer;min-height:28px}#connect-dialog .signal-fallback{font-size:11px;margin:9px 0}#connect-dialog .signal-fallback summary{cursor:pointer;min-height:25px}#connect-dialog #offer-link{font-family:monospace;text-overflow:ellipsis}#connect-dialog #answer-feedback{font-size:12px;color:#376247;min-height:0;margin:4px 0}#connect-dialog #answer-feedback:empty{display:none}#connect-dialog #guest-name-label{max-width:300px}#connect-dialog[data-role=host] #guest-name-label{display:none}#connect-dialog #peer-status-list{white-space:pre-line;font-size:12px;margin:8px 0}#connect-dialog textarea{resize:vertical;overflow-wrap:anywhere;font:11px/1.5 monospace}#connect-dialog .connection-steps{margin:12px 0}#connect-dialog #offer-ready,#connect-dialog #answer-ready{margin-top:12px;padding-top:8px;border-top:1px solid var(--line)}
 @media(max-width:760px){#connect-dialog{padding:17px;width:calc(100vw - 24px);max-height:92dvh}#connect-dialog h2{font-size:23px}#connect-dialog .small{min-height:38px}#connect-dialog .connection-steps li{font-size:9px}}
+
+/* Primary actions and infrequent tools occupy separate spaces. */
+#game .table-utilities{position:absolute;right:12px;bottom:12px;z-index:46;display:flex;align-items:center;gap:5px;pointer-events:none;background:none;border:0;padding:0}
+#game .table-utilities>*,#game .table-utilities button,#game .table-utilities summary{pointer-events:auto}
+#game .table-utilities button.small,#game .table-utilities .hand-manual>summary{height:30px;min-height:30px;min-width:52px;padding:3px 9px;font-size:11px;border:1px solid #758c69;border-radius:5px;color:#e5dfc5;background:#244d3f}
+#game .table-utilities .hand-manual .compact-row{right:0;transform:none;max-width:calc(100vw - 24px);max-height:min(300px,65dvh);overflow:auto}
+#game .hand-toolbar{position:relative;z-index:20;background:none!important;box-shadow:none!important;border:0!important;outline:0;padding:0!important;pointer-events:none;overflow:visible}
+#game .hand-toolbar .primary-actions{background:none;border:0;padding:0;pointer-events:none;flex-wrap:nowrap}
+#game .hand-toolbar button{pointer-events:auto;flex:none}
+#game #advance-phase{width:auto;min-width:70px;max-width:150px;white-space:nowrap}
+#game #hand{position:relative;z-index:10;background:none;padding-top:24px;margin-top:-16px;overflow-y:hidden}
+#game #hand:has(.card-shell:hover),#game #hand:has(.card-shell:focus-within){z-index:30}
+#game .hand-toolbar:has(button:hover),#game .hand-toolbar:has(button:focus-visible){z-index:40}
+#game .seat-flags{top:auto;bottom:calc(100% + 1px);left:5px;right:5px;min-height:20px;display:flex;gap:4px;flex-wrap:wrap;z-index:15;pointer-events:none}
+#game .seat-flags:empty{display:none}
+#game .seat-flags .status-chip{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;min-height:20px;padding:0 3px;font-size:14px;line-height:18px;border:1px solid #96a78588;border-radius:5px;background:#1d4235eb;color:#e6ddb5;pointer-events:auto}
+@media(max-width:760px){#game .table-utilities{right:6px;bottom:10px;flex-direction:column;gap:4px}#game .table-utilities button.small,#game .table-utilities .hand-manual>summary{min-width:46px;height:28px;min-height:28px;font-size:10px;padding:2px 5px}#game #advance-phase{min-width:60px;font-size:10px;padding:3px 6px}#game .seat-flags{top:auto;min-height:17px;gap:2px}#game .seat-flags .status-chip{height:17px;min-height:17px;min-width:17px;font-size:12px;line-height:15px}}
+@media(max-height:500px) and (orientation:landscape){#game .table-utilities{right:6px;bottom:8px;gap:4px}#game .table-utilities button.small,#game .table-utilities .hand-manual>summary{height:23px;min-height:23px;min-width:44px;font-size:9px;padding:1px 6px}#game #advance-phase{min-width:62px;font-size:9px}#game .seat-flags{top:auto;min-height:15px}#game .seat-flags .status-chip{height:15px;min-height:15px;min-width:15px;font-size:10px;line-height:13px}#game #hand{padding-top:19px;margin-top:-15px}}

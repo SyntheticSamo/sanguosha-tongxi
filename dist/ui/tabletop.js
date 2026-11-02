@@ -72,7 +72,7 @@ export class Tabletop {
     const animateScene=!this.suppressEffects&&!!old;this.suppressEffects=false;if(v.tableExperience)this.scene.motion.prepare(old,animateScene);this.lastView=v;
     const focus=document.activeElement,focusCard=focus?.dataset?.card,focusTarget=focus?.dataset?.targetSeat;
     $('welcome').hidden=true;$('game').hidden=false;$('game').dataset.size=v.size;$('game').dataset.phase=v.phase;
-    $('practice-exit').hidden=!v.practice;document.querySelector('.stage-header [data-do=connect]').hidden=!!v.practice;
+    $('practice-exit').hidden=false;document.querySelector('.stage-header [data-do=connect]').hidden=!!v.practice;
     const lobby=v.status==='lobby',turn=v.players.find(p=>p.id===v.turn);
     $('room-title').textContent=v.status==='finished'?`${v.winner} · 对局结束`:lobby?'好友入席，静候开局':`${turn?.name} · ${PHASES[v.phase]}阶段`;
     $('revision').textContent=`SYNC / ${v.rev}`;$('room-size').textContent=`${v.players.length} / ${v.size}`;
@@ -178,6 +178,7 @@ export class Tabletop {
     if(v.tableExperience){play.textContent=this.armedSkill?'发动':advice.ok&&CARD_MAP[advice.kind]?.slot?'装备':'出牌';drop.textContent='弃牌';}
     if(this.isChainSelection()){play.hidden=false;play.disabled=this.busy||(this.chainDraft?this.chainDraft.choice?!t.length||s.ids.length<(v.pending?.minCards||0):!advice.ok&&!this.armedSkill:false);play.textContent=this.chainDraft?'确认（'+t.length+'）':'放到桌心';}
     recast.hidden=!(s.ids.length===1&&CARD_BY_ID[s.ids[0]]?.kind==='tiesuo')||!!v.pending;recast.disabled=this.busy||v.turn!==v.you||v.phase!==3||s.zone!=='hand';
+    $('cancel-selection').hidden=!(s.ids.length||t.length||this.armedSkill||this.conversion||this.chainDraft||v.pending?.phaseOpportunity&&v.pending.player===v.you);$('cancel-selection').disabled=this.busy;
     const counts=discardAdvice(v,s.zone==='hand'?s.ids:[]);
     const upper=counts.exempt?'∞':counts.limit,over=!counts.exempt&&this.me.hand.length>counts.limit;
     $('discard-help').innerHTML=discard?`<b class="${over?'over-limit':''}">${this.me.hand.length}</b>/${upper}`:'';
@@ -193,6 +194,7 @@ export class Tabletop {
     $('compact-turn').textContent=v.status==='playing'?(v.turn===v.you?'你的回合':actor?.name+' 的回合'):'';$('compact-turn').title=$('compact-turn').textContent;
     b.textContent=labels[v.phase];b.disabled=this.busy||!!v.pending||!!v.flow?.opening||!!v.flow?.draw?.remaining||!(v.turn===v.you||v.you===v.hostId)||v.peek.length>0||(v.turn===v.you&&v.phase===4&&d.needed>0);
     b.hidden=v.turn!==v.you||v.status!=='playing'||!!v.flow?.drawCompleted&&v.phase===2&&!v.pending&&!v.flow?.needsContinue;if(v.status==='playing')$('room-title').textContent=(v.turn===v.you?'你的回合':'当前为 '+actor?.name+' 的回合')+(v.phaseState?.extraTurn?' · 额外回合':'');$('turn-center').textContent=v.status==='lobby'?'准备选将':v.pending?'等待'+(v.players.find(p=>p.id===v.pending.player)?.name||'玩家')+'响应':'';
+    const rewind=$('phase-rewind');rewind.hidden=!this.current().isHost;rewind.disabled=this.busy||!v.phaseUndo?.available;const previous=v.phaseUndo;rewind.title=previous?.available?'回到'+(v.players.find(p=>p.id===previous.player)?.name||'玩家')+'的'+PHASES[previous.phase]+'阶段开始；调试操作':'没有可撤回的上一阶段；恢复存档后需先经过一个阶段';
     const gain=$('practice-gain');gain.hidden=!v.practice;gain.disabled=this.busy||v.status!=='playing'||!!v.pending||!!v.flow?.opening||v.peek.length>0;gain.title=gain.disabled?'请先完成当前选择':'从抽牌堆或弃牌堆获得指定牌';
     const w=v.flow?.skillWindow;if(w){b.textContent=['继续','开始判定','开始摸牌','开始出牌','继续','继续'][v.phase];$('quick-phase').textContent=b.textContent;}
     const auto=$('auto-advance');auto.hidden=!v.tableExperience;auto.disabled=this.busy||v.turn!==v.you||v.status!=='playing';auto.setAttribute('aria-checked',String(this.me.autoAdvanceEnabled!==false));auto.classList.toggle('enabled',this.me.autoAdvanceEnabled!==false);
@@ -208,8 +210,10 @@ export class Tabletop {
     $('flow-tools').innerHTML=opening?`<span>轮流发起手牌…</span>${v.you===v.hostId?'<button class="text-link" data-ui="opening-skip">跳过展示</button>':''}`:!v.tableExperience&&v.interactionMode==='tactile'&&can&&v.status==='playing'&&v.phase!==3?`<button class="text-link" data-ui="flow-pause">${v.flow?.paused?'恢复自动推进':'暂停自动推进'}</button>${!v.pending&&!v.flow?.draw?.remaining?'<small>可继续时停留 1.5 秒</small>':''}`:'';
   }
   renderLogs(){
-    const v=this.view;if(!v)return;const logs=$('logs'),stick=logs.scrollTop+logs.clientHeight>=logs.scrollHeight-40,filter=$('log-filter').value;
-    logs.innerHTML=v.logs.filter(l=>!filter||l.category===filter).map(l=>`<div class="log-line" data-category="${esc(l.category||'table')}"><span>#${l.rev} · ${{play:'出牌',response:'响应',health:'体力',draw:'摸牌',correction:'纠正',table:'牌桌'}[l.category]||'牌桌'}</span>${esc(l.text)}</div>`).join('');if(stick)logs.scrollTop=logs.scrollHeight;
+    const v=this.view;if(!v)return;const logs=$('logs'),filter=$('log-filter').value,stick=logs.scrollTop<40,rect=logs.getBoundingClientRect(),anchor=[...logs.children].find(e=>e.getBoundingClientRect().bottom>rect.top),key=anchor?.dataset.logKey,top=anchor?.getBoundingClientRect().top;
+    const entries=v.logs.filter(l=>!filter||l.category===filter).slice().reverse(),renderKey=JSON.stringify([filter,entries]);if(renderKey===this.logRenderKey)return;const changedFilter=this.logFilter!==filter;this.logFilter=filter;this.logRenderKey=renderKey;
+    logs.innerHTML=entries.map(l=>`<div class="log-line" data-log-key="${esc(JSON.stringify([l.rev,l.category,l.text]))}" data-category="${esc(l.category||'table')}"><span>#${l.rev} · ${{play:'出牌',response:'响应',health:'体力',draw:'摸牌',correction:'纠正',table:'牌桌'}[l.category]||'牌桌'}</span>${esc(l.text)}</div>`).join('');
+    const kept=key&&[...logs.children].find(e=>e.dataset.logKey===key);if(stick||changedFilter)logs.scrollTop=0;else if(kept)logs.scrollTop+=kept.getBoundingClientRect().top-top;
   }
   renderPending(){
     const v=this.view,q=v.pending,panel=$('response-panel');for(const el of document.querySelectorAll('[data-seat]'))el.classList.toggle('awaiting-response',v.tableExperience&&q?.player===el.dataset.seat);panel.hidden=!q;if(!q){panel.replaceChildren();return;}

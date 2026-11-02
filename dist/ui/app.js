@@ -12,7 +12,7 @@ import { inspectUse,responseOptions,conversionKinds,discardAdvice } from '../bac
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let view=null,isHost=false,worker=null,links=new Map(),guestLink=null,pending=null,pendingTimer=null,selection={ids:[],zone:'hand',owner:null},libraryMode='generals',libraryGain=false,actionCallback=null,toastTimer;
-let lastTap=null,historyCache=null;
+let lastTap=null,historyCache=null,rememberCreatedName=false;
 let selectedTargets=[],targetContext=null,lessonRequested=false;
 const ui=new Tabletop({state:()=>({view,isHost,pending,selection,selectedTargets}),toast,dispatch,act:name=>actions[name]?.(),selectTarget,history:requestHistory,arrange:sendArrange,practiceLesson:()=>{create(true,{quickStart:true,size:2});lessonRequested=true;}});
 const connections=new ConnectionUX({state:()=>({view,isHost}),role:role=>ui.connectRole(role),open:()=>open('connect-dialog'),status,toast,copy,accept,offer,peers:renderPeers});
@@ -33,20 +33,21 @@ function open(id){const d=$(id);if(!d.open)d.showModal();}
 function closeAll(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
 function status(message){$('connection-status').textContent=message;}
 function setBadge(text,ok=false){$('scene-network').title=text;$('scene-network').style.color=ok?'#a7c98e':'#d2b478';$('network-badge').innerHTML=`<i style="background:${ok?'#7d9b78':'#b19360'}"></i>${esc(text)}`;}
-function reset(){connections.reset();ui.reset();lessonRequested=false;for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
+function reset(){connections.reset();ui.reset();rememberCreatedName=false;lessonRequested=false;for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
 function exitPractice(){
-  if(!view?.practice)return;
+  if(!view)return;const online=!view.practice,host=isHost;
   closeAll();reset();isHost=false;actionCallback=null;clearTimeout(toastTimer);$('toast').hidden=true;
   $('game').hidden=true;$('welcome').hidden=false;$('practice-exit').hidden=true;setBadge('本地就绪',true);
   window.scrollTo({top:0,behavior:'instant'});document.querySelector('#welcome [data-do=practice]').focus({preventScroll:true});
+  if(online)toast(host?'已返回主页并断开联机；可恢复最近的本地主持牌桌。':'已返回主页；保留本标签页，可用新邀请回到原席位。');
 }
 function startWorker(){
   worker=new Worker(new URL('../backend/worker.js',import.meta.url),{type:'module'});
   worker.onerror=e=>toast(`本地后端异常：${e.message}`);
   worker.onmessage=e=>{
     const m=e.data;
-    if(m.kind==='created'){ui.scene.openingRequested=true;}else if(m.kind==='view'){
-      if(m.route==='host'){view=mergeHistory(m.view);if(lessonRequested&&view.practice){ui.coach=0;lessonRequested=false;}render();}
+    if(m.kind==='created'){ui.scene.openingRequested=true;rememberCreatedName=true;}else if(m.kind==='view'){
+      if(m.route==='host'){view=mergeHistory(m.view);if(rememberCreatedName){rememberCreatedName=false;if(!view.practice)connections.rememberName(view.players.find(p=>p.id===view.you)?.name);}if(lessonRequested&&view.practice){ui.coach=0;lessonRequested=false;}render();}
       else {const link=links.get(m.route);if(link){link.seatId=m.view.you;link.displayName=m.view.players.find(p=>p.id===m.view.you)?.name;connections.synced(link);renderPeers();}sendRemote(m.route,envelope('snapshot',{view:m.view}));}
     }else if(m.kind==='history'){if(m.route==='host')acceptHistory(m.page);else sendRemote(m.route,envelope('snapshot',{historyPage:m.page}));
     }else if(m.kind==='ack'){
@@ -237,7 +238,7 @@ const actions={
   'peek-top':()=>view.pending?.kind==='skill'?dispatch('skillResolve',{choice:'top',cards:picked('peek'),targets:[]}):dispatch('returnPeek',{cards:picked('peek'),to:'top'}),'peek-bottom':()=>view.pending?.kind==='skill'?dispatch('skillResolve',{choice:'bottom',cards:picked('peek'),targets:[]}):dispatch('returnPeek',{cards:picked('peek'),to:'bottom'}),
   'peek-hand':()=>view.pending?.kind==='skill'?dispatch('skillResolve',{choice:'keep',cards:[],targets:[]}):dispatch('returnPeek',{cards:picked('peek'),to:'hand'}),'peek-pool':()=>dispatch('returnPeek',{cards:picked('peek'),to:'pool'}),
   'discard-pile':()=>{$('pile-content').innerHTML=view?.discard.map(id=>cardHTML(id,'discard',null,true)).join('')||'<p class="muted">弃牌堆为空。</p>';open('pile-dialog');},
-  undo:()=>hostOnly('undo'),export:()=>hostOnly('export'),'reveal-role':()=>dispatch('role'),
+  undo:()=>hostOnly('undo'),'rewind-phase':()=>{document.querySelector('.hand-manual').open=false;hostOnly('rewindPhase',{id:crypto.randomUUID(),rev:view.rev});},export:()=>hostOnly('export'),'reveal-role':()=>dispatch('role'),
   death:()=>{if(!isHost)throw new Error('仅房主可确认阵亡');dispatch('death',{target:target()});},
   finish:()=>{if(!isHost)throw new Error('仅房主可结束对局');dispatch('finish',{winner:$('winner').value});closeAll();},
   restore:()=>{reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'restore'});setBadge('房主 · 本地恢复',true);}

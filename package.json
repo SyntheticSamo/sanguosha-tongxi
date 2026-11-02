@@ -1,6 +1,6 @@
 {
   "name": "sanguosha-tongxi",
-  "version": "8.3.0",
+  "version": "8.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -25,6 +25,7 @@
     "audit:presentations": "node scripts/audit-presentations.mjs",
     "review:presentations": "node scripts/presentation-review.mjs",
     "test:browser:connect": "node scripts/browser-connect-ux.mjs",
+    "test:browser:polish": "node scripts/browser-polish.mjs",
     "test:browser:round-eight": "node scripts/browser-round-eight.mjs",
     "audit:cards": "node scripts/audit-card-rules.mjs",
     "test:browser": "node scripts/browser-all.mjs"

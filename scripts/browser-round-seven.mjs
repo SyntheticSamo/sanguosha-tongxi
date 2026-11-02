@@ -26,7 +26,8 @@ async function layout(label){
   const hand=r(document.querySelector('#hand-panel')),parts=[...document.querySelectorAll('.seat')].flatMap(e=>[e,...e.querySelectorAll('.gear-slots,.play-slot,.judge-zone')]).filter(visible);
   for(const e of parts){const b=r(e);if(b.left<-.5||b.right>innerWidth+.5||b.top<29||b.bottom>hand.top+1)out.push(['outside',e.className,b.toJSON()]);}
   for(let i=0;i<parts.length;i++)for(let j=i+1;j<parts.length;j++)if(parts[i].closest('.seat')!==parts[j].closest('.seat')&&over(r(parts[i]),r(parts[j])))out.push(['regions',parts[i].className,parts[j].className]);
-  for(const el of document.querySelectorAll('.table-center [data-do=phase],#center-plays,.response-panel')){if(!visible(el))continue;const b=r(el);for(const part of parts)if(over(b,r(part)))out.push(['control',el.id||el.className,part.className,part.closest('.seat')?.dataset.seat,r(part).toJSON(),b.toJSON()]);}
+  for(const el of document.querySelectorAll('#main-actions>button,#center-plays .center-card,.response-panel')){if(!visible(el))continue;const b=r(el);for(const part of parts)if(over(b,r(part)))out.push(['control',el.id||el.className,part.className,part.closest('.seat')?.dataset.seat,r(part).toJSON(),b.toJSON()]);}
+  const river=document.querySelector('#center-plays');if(visible(river)&&river.querySelectorAll('.center-card').length===1&&river.classList.contains('history-overflow'))out.push(['single-card-overflow']);
   if(hand.bottom>innerHeight+.5||document.documentElement.scrollWidth>innerWidth)out.push(['viewport',{bottom:hand.bottom,h:innerHeight,width:document.documentElement.scrollWidth,w:innerWidth}]);return out;
  });assert.deepEqual(bad,[],label+' '+JSON.stringify(bad));
 }

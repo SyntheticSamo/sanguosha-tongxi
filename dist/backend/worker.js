@@ -3,6 +3,8 @@ import {validateArrangeHint} from './interaction.js';
 import { newRoom, joinRoom, reduce, project, validateState, migrateState } from './engine.js';
 import { saveSnapshot,loadSnapshot } from './storage.js';
 import {canAutoAdvance,canFinishDraw,phaseToken} from './flow.js';
+import {PhaseHistory} from './phase-history.js';
+const phaseHistory=new PhaseHistory();
 let state=null, routes=new Map(), seen=new Map(), controlled=null, undo=[];
 let flowTimer=null,flowKey=null,restoredOpening=false,arrangements=new Map();
 function armFlow(){
@@ -16,22 +18,23 @@ function armFlow(){
     if(opening){if(state?.flow?.opening?.id!==opening.id)return;}
     else if(!canFinishDraw(state)&&!canAutoAdvance(state))return;
     const actor=opening?state.hostId:state.turn,action=opening?{type:'finishOpening',windowId:opening.id}:state.flow?.skillWindow?{type:'continuePhase',windowId:state.flow.skillWindow.id}:{type:'phase'};
-    const next=reduce(state,actor,{...action,rev:state.rev,id:crypto.randomUUID()});undo.push(state);undo=undo.slice(-30);state=next;await persist();broadcast();
+    const next=reduce(state,actor,{...action,rev:state.rev,id:crypto.randomUUID()});undo.push(state);undo=undo.slice(-30);phaseHistory.observe(state,next);state=next;await persist();broadcast();
   }).catch(error=>{flowKey=null;emit('warning',{message:error.message});});},delay);
 }
 const emit=(kind,extra={})=>postMessage({kind,...extra});
 const bind=(route,seat)=>{for(const [key,value]of routes)if(value===seat&&key!==route){routes.delete(key);emit('superseded',{route:key});}routes.set(route,seat);};
 function broadcast(){
   armFlow();
-  emit('view',{route:'host',view:projectView(controlled||state.hostId)});
+  emit('view',{route:'host',view:projectView(controlled||state.hostId,true)});
   for(const [route,seat]of routes)if(state.players.some(p=>p.id===seat))emit('view',{route,view:projectView(seat)});
 }
-function projectView(viewer){const v=project(state,viewer),hint=arrangements.get(v.pending?.windowId);if(hint&&v.pending?.kind==='chooseCard'&&v.pending.player===viewer)v.pending.arrangingAt=hint.at;return v;}
+function projectView(viewer,local=false){const v=project(state,viewer),hint=arrangements.get(v.pending?.windowId);if(hint&&v.pending?.kind==='chooseCard'&&v.pending.player===viewer)v.pending.arrangingAt=hint.at;if(local)v.phaseUndo=phaseHistory.summary(state);return v;}
 async function persist(){try{await saveSnapshot(state);}catch{emit('warning',{message:'浏览器未能保存本地恢复存档，请导出备份。'});}}
 let serial=Promise.resolve();
 self.onmessage=e=>{serial=serial.then(()=>handle(e.data)).catch(error=>emit('error',{route:e.data.route||'host',requestId:e.data.action?.id,message:error.message}));};
 async function handle(m){
   const route=m.route||'host';
+  if(route!=='host'&&!['join','action','sync'].includes(m.kind))throw new Error('此操作仅限房主设备');
   if(m.kind==='create'){
     state=newRoom(m.config);controlled=null;arrangements.clear();seen.clear();routes.clear();undo=[];
     if(state.practice&&m.config.quickStart){
@@ -42,21 +45,27 @@ async function handle(m){
       const generals=['guanyu','zhaoyun','caocao','lvbu','huangyueying','simayi','zhugeliang','sunquan'];
       state.players.forEach((p,i)=>act(p.id,'general',{general:generals[i]}));act(state.hostId,'start');controlled=state.turn;
     }
-    await persist();emit('created');broadcast();return;
+    phaseHistory.reset(state);await persist();emit('created');broadcast();return;
   }
   if(m.kind==='restore'){
     const loaded=m.snapshot||await loadSnapshot();if(!loaded)throw new Error('没有可恢复的本地存档');const candidate=migrateState(loaded);
-    state=structuredClone(candidate);controlled=null;arrangements.clear();routes.clear();seen.clear();undo=[];state.rev++;state.presentationResetRev=state.rev;restoredOpening=true;flowKey=null;emit('restored',{roomId:state.roomId});await persist();broadcast();return;
+    state=structuredClone(candidate);controlled=null;arrangements.clear();routes.clear();seen.clear();undo=[];state.rev++;state.presentationResetRev=state.rev;phaseHistory.reset(state);restoredOpening=true;flowKey=null;emit('restored',{roomId:state.roomId});await persist();broadcast();return;
   }
   if(!state)throw new Error('请先创建牌桌');
   if(m.kind==='join'){if(state.practice)throw new Error('演练房间不接受网络玩家');const result=joinRoom(state,m.credentials);state=result.state;bind(route,result.seat);await persist();broadcast();return;}
-  if(m.kind==='sync'){if(route!=='host'&&!routes.has(route))throw new Error('尚未绑定席位');const viewer=route==='host'?(controlled||state.hostId):routes.get(route);if(m.history){emit('history',{route,page:projectHistoryPage(state,viewer,m.history)});return;}emit('view',{route,view:projectView(viewer)});return;}
+  if(m.kind==='sync'){if(route!=='host'&&!routes.has(route))throw new Error('尚未绑定席位');const viewer=route==='host'?(controlled||state.hostId):routes.get(route);if(m.history){emit('history',{route,page:projectHistoryPage(state,viewer,m.history)});return;}emit('view',{route,view:projectView(viewer,route==='host')});return;}
   if(m.kind==='export'){emit('export',{snapshot:state});return;}
   if(m.kind==='control'){if(!state.practice)throw new Error('只有本地演练可切换席位');if(!state.players.some(p=>p.id===m.seat))throw new Error('席位不存在');controlled=m.seat;broadcast();return;}
+  if(m.kind==='rewindPhase'){
+    if(typeof m.id!=='string'||!m.id||m.id.length>128)throw new Error('操作编号无效');const key='host-rewind:'+m.id;
+    if(seen.has(key)){emit('ack',{route,id:m.id,rev:seen.get(key)});return;}
+    if(m.rev!==state.rev)throw new Error('牌桌已更新，请核对后重新撤回');
+    const next=phaseHistory.rewind(state);validateState(next);phaseHistory.commitRewind(next);clearTimeout(flowTimer);flowKey=null;arrangements.clear();undo=[];state=next;seen.set(key,state.rev);if(seen.size>2000)seen.delete(seen.keys().next().value);await persist();broadcast();emit('ack',{route,id:m.id,rev:state.rev});return;
+  }
   if(m.kind==='undo'){
     if(!undo.length)throw new Error('没有可撤销的操作');clearTimeout(flowTimer);flowKey=null;const rev=state.rev;state=undo.pop();state.rev=rev+1;if(state.flow?.drawCompleted)state.flow.drawCompleted.readyAt=Date.now()+1500;state.presentationResetRev=state.rev;
     // A monotonic revision prevents stale in-flight requests from reapplying after undo.
-    state.logs.push({rev:state.rev,text:'房主撤销了上一步。已看到的信息无法被收回。'});await persist();broadcast();return;
+    state.logs.push({rev:state.rev,text:'房主撤销了上一步。已看到的信息无法被收回。'});phaseHistory.reset(state);await persist();broadcast();return;
   }
   if(m.kind==='action'){
     if(m.action?.type==='practiceGain'&&route!=='host')throw new Error('演练取牌仅限本机操作');
@@ -65,7 +74,7 @@ async function handle(m){
     const key=actor+':'+a.id;
     if(seen.has(key)){emit('ack',{route,id:a.id,rev:seen.get(key)});return;}
     if(a.type==='arrangeHand'){const hint=validateArrangeHint(state,actor,a,arrangements.get(a.windowId)?.at);arrangements.clear();arrangements.set(hint.windowId,hint);seen.set(key,state.rev);if(seen.size>2000)seen.delete(seen.keys().next().value);broadcast();emit('ack',{route,id:a.id,rev:state.rev});return;}
-    const next=reduce(state,actor,a);if(a.type==='correct'||a.type==='flowPause'||a.type==='setAutoAdvance'){clearTimeout(flowTimer);flowKey=null;}undo.push(state);undo=undo.slice(-30);state=next;seen.set(key,state.rev);if(seen.size>2000)seen.delete(seen.keys().next().value);
+    const next=reduce(state,actor,a);if(a.type==='correct'||a.type==='flowPause'||a.type==='setAutoAdvance'){clearTimeout(flowTimer);flowKey=null;}undo.push(state);undo=undo.slice(-30);if(a.type==='correct')phaseHistory.reset(next);else phaseHistory.observe(state,next);state=next;seen.set(key,state.rev);if(seen.size>2000)seen.delete(seen.keys().next().value);
     await persist();broadcast();emit('ack',{route,id:a.id,rev:state.rev});return;
   }
   throw new Error('未知后端消息');

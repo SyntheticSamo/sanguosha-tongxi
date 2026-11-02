@@ -80,7 +80,7 @@ export class Scene{
   envelope(el){
     const r=el.getBoundingClientRect(),cx=r.x+r.width/2,cy=r.y+r.height/2,wing=parseFloat(getComputedStyle(el).getPropertyValue('--wing'))||0;
     let left=r.left-wing,right=r.right+wing,top=r.top,bottom=r.bottom;
-    for(const child of el.querySelectorAll('.gear-slots,.play-slot,.judge-zone,.judge-zone>small'))if(child.checkVisibility()){const b=child.getBoundingClientRect();left=Math.min(left,b.left);right=Math.max(right,b.right);top=Math.min(top,b.top);bottom=Math.max(bottom,b.bottom);}
+    for(const child of el.querySelectorAll('.gear-slots,.play-slot,.judge-zone,.judge-zone>small,.seat-flags'))if(child.checkVisibility()){const b=child.getBoundingClientRect();left=Math.min(left,b.left);right=Math.max(right,b.right);top=Math.min(top,b.top);bottom=Math.max(bottom,b.bottom);}
     return {left:cx-left,right:right-cx,up:cy-top,down:bottom-cy};
   }
   placeSeats(){
@@ -117,12 +117,23 @@ export class Scene{
 
   fitHistory(arena=document.querySelector('.table-arena')){
     const band=$('center-plays'),ar=arena.getBoundingClientRect();if(!band.checkVisibility())return;
-    const br=band.getBoundingClientRect(),blocks=[...document.querySelectorAll('.seat,.gear-slots,.play-slot,.judge-zone,.pile-rail,#response-panel,.effect-fan')].filter(e=>e.checkVisibility()).map(e=>e.getBoundingClientRect()).filter(r=>r.bottom>br.top&&r.top<br.bottom);
-    let intervals=[[10,ar.width-10]];for(const r of blocks){const l=r.left-ar.left-8,h=r.right-ar.left+8;intervals=intervals.flatMap(([a,b])=>h<=a||l>=b?[[a,b]]:[[a,Math.min(b,l)],[Math.max(a,h),b]].filter(([x,y])=>y>x));}
-    intervals.sort((a,b)=>Number(b[0]<=ar.width/2&&b[1]>=ar.width/2)-Number(a[0]<=ar.width/2&&a[1]>=ar.width/2)||(b[1]-b[0])-(a[1]-a[0]));
-    const [l,r]=intervals[0]||[ar.width/2-45,ar.width/2+45],width=Math.max(42,Math.min(1000,r-l)),x=(l+r)/2-ar.width/2;
-    band.style.setProperty('--center-width',width+'px');const nr=band.getBoundingClientRect(),prior=parseFloat(band.style.getPropertyValue('--center-shift'))||0,base=(nr.left+nr.right)/2-ar.left-prior;band.style.setProperty('--center-shift',((l+r)/2-base)+'px');
-    const cards=[...band.querySelectorAll('.center-card')],cw=cards[0]?.offsetWidth||65,packed=packCards(width,cw,cards.length,{minAdvance:cw<30?18:Math.max(24,cw/2)});
+    const faces=[...band.querySelectorAll('.center-card')],bounds=()=>{const rs=faces.map(e=>e.getBoundingClientRect()).filter(r=>r.width&&r.height),r=band.getBoundingClientRect();return {top:rs.length?Math.min(...rs.map(r=>r.top))-6:r.top,bottom:rs.length?Math.max(...rs.map(r=>r.bottom))+6:r.bottom};};
+    const blocks=[...document.querySelectorAll('.seat,.gear-slots,.play-slot,.judge-zone,.pile-rail,#response-panel,.effect-fan')].filter(e=>e.checkVisibility()).map(e=>e.getBoundingClientRect()),axis=ar.width/2;
+    const room=(top,bottom)=>{let radius=Math.min(500,axis-10),blocked=false;for(const r of blocks){if(r.bottom<=top||r.top>=bottom)continue;const left=r.left-ar.left,right=r.right-ar.left;if(right<=axis)radius=Math.min(radius,axis-right-8);else if(left>=axis)radius=Math.min(radius,left-axis-8);else blocked=true;}return {width:Math.max(cw+8,radius*2),blocked};};
+    const cw=faces[0]?.offsetWidth||65,options={minAdvance:cw<30?18:Math.max(24,cw/2)},minimum=Math.min(ar.width-20,cw+Math.max(0,Math.min(faces.length,8)-1)*options.minAdvance+20);
+    let {top,bottom}=bounds(),space=room(top,bottom);
+    // Use nearby vertical blank space before clipping a single card or scrolling.
+    // Horizontal placement always remains on the same table axis.
+    if(faces.length&&(space.blocked||space.width<minimum)){
+      const middle=(top+bottom)/2,half=(bottom-top)/2,center=document.querySelector('.table-center'),cr=center.getBoundingClientRect(),headers=[...center.children].filter(e=>e!==band&&e.id!=='center-history-controls'&&e.checkVisibility()).map(e=>e.getBoundingClientRect()),over=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>3&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>3;
+      const candidates=[ar.top+ar.height/2,...blocks.flatMap(r=>[r.bottom+half+8,r.top-half-8])].map(y=>{const delta=y-middle,area=room(y-half,y+half);return {y,delta,...area};}).filter(c=>!c.blocked&&c.y-half>=ar.top+3&&c.y+half<=ar.bottom-3&&headers.every(r=>{const moved={left:r.left,right:r.right,top:r.top+c.delta,bottom:r.bottom+c.delta};return moved.top>=ar.top+2&&blocks.every(b=>!over(moved,b));}));
+      candidates.sort((a,b)=>Number(b.width>=minimum)-Number(a.width>=minimum)||(a.width>=minimum?Math.abs(a.delta)-Math.abs(b.delta):b.width-a.width));
+      const best=candidates[0];if(best&&(best.width>space.width+8||space.blocked))center.style.top=(cr.top+cr.height/2-ar.top+best.delta)+'px';
+      ({top,bottom}=bounds());space=room(top,bottom);
+    }
+    const paddingFor=width=>Math.min(10,Math.max(4,(width-cw)/2));let width=space.width;options.padding=paddingFor(width)*2;let packed=packCards(width,cw,faces.length,options);const br=band.getBoundingClientRect();
+    if(packed.overflow){width=Math.min(width,room(br.top,br.bottom).width);options.padding=paddingFor(width)*2;packed=packCards(width,cw,faces.length,options);}
+    band.style.paddingLeft=options.padding/2+'px';band.style.paddingRight=options.padding/2+'px';band.style.setProperty('--center-width',width+'px');const nr=band.getBoundingClientRect(),prior=parseFloat(band.style.getPropertyValue('--center-shift'))||0,base=(nr.left+nr.right)/2-ar.left-prior;band.style.setProperty('--center-shift',(axis-base)+'px');
     band.style.setProperty('--card-overlap',packed.overlap+'px');band.classList.toggle('history-overflow',packed.overflow);band.dataset.packing=packed.overflow?'scroll':packed.overlap>cw*.13?'overlap':'spread';
   }
 
@@ -180,15 +191,28 @@ export class Scene{
     const newest=plays.at(-1);document.querySelectorAll('.source-arrow').forEach(e=>e.remove());if(newest)requestAnimationFrame(()=>this.sourceLine(newest.actor));
     for(const el of $('center-plays').querySelectorAll('[data-actor]')){el.onfocus=el.onpointerenter=()=>this.sourceLine(el.dataset.actor);el.onblur=el.onpointerleave=()=>{if(newest)this.sourceLine(newest.actor);};}
   }
+  positionCounter(el){
+    const arena=document.querySelector('.table-arena').getBoundingClientRect(),band=$('center-plays'),br=band.getBoundingClientRect();
+    for(const anchor of el.querySelectorAll('.counter-anchor')){
+      const face=band.querySelector(`[data-play="${CSS.escape(anchor.dataset.counterPlay)}"]`)||(anchor.dataset.delayed?band.querySelector('.effect-preview'):null),r=face?.getBoundingClientRect();
+      anchor.hidden=!r||!band.checkVisibility()||r.right<br.left||r.left>br.right;if(anchor.hidden)continue;
+      const matrix=new DOMMatrix(getComputedStyle(face).transform),angle=Math.atan2(matrix.b,matrix.a)*180/Math.PI;
+      Object.assign(anchor.style,{left:r.x+r.width/2-arena.x+'px',top:r.y+r.height/2-arena.y+'px',width:face.offsetWidth+'px',height:face.offsetHeight+'px',transform:`translate(-50%,-50%) rotate(${angle}deg)`});
+      anchor.style.setProperty('--counter-name',getComputedStyle(face.querySelector('.card-name')).fontSize);
+    }
+  }
   counterEffect(e){
     if(this.reduceMotion||!this.battleEffects)return 0;this.hidePreview();
-    const previous=(this.v.centerPlays||[]).find(p=>p.id===e.parentId),point=this.relations.card(e.parentId)||this.relations.point(document.querySelector(`[data-play="${CSS.escape(e.id)}"]`)),arena=document.querySelector('.table-arena'),el=document.createElement('div');
+    const previous=(this.v.centerPlays||[]).find(p=>p.id===e.parentId),el=document.createElement('div'),kind=previous?.kind||this.v.pending?.effect?.cardKind||'wuxie';
     el.className='counter-collision';el.dataset.parent=e.parentId||e.id;el.setAttribute('aria-hidden','true');
-    el.innerHTML=`<span class="counter-paper left">${this.cardFace(previous?.kind||'wuxie',previous?.cards.length===1?previous.cards[0]:null)}</span><span class="counter-paper right">${this.cardFace(previous?.kind||'wuxie',previous?.cards.length===1?previous.cards[0]:null)}</span><span class="counter-rise">${this.cardFace('wuxie',e.cards?.[0]||null)}</span>`;
-    if(point){el.style.left=point.x+'px';el.style.top=point.y+'px';}arena.append(el);
-    const duration=this.motionChoice==='fast'?500:1000,frames=[{opacity:0,transform:'translate(-35%,-50%) scale(.94)'},{opacity:1,transform:'translate(-55%,-50%) scale(1)',offset:.18},{opacity:1,transform:'translate(-50%,-50%) scale(1)',offset:.76},{opacity:0,transform:'translate(-50%,-50%) scale(.98)'}],anim=el.animate(frames,{duration});this.motions.add(anim);
-    for(const [index,part]of [...el.children].entries()){const a=part.animate(index<2?[{transform:'none',opacity:1},{transform:`translate(${index?7:-7}px,3px) rotate(${index?6:-6}deg)`,opacity:.7,offset:.48},{transform:`translate(${index?10:-10}px,5px)`,opacity:0}]:[{transform:'translateY(12px)',opacity:0},{transform:'translateY(-14px)',opacity:1,offset:.54},{transform:'translateY(2px)',opacity:1,offset:.78},{transform:'none',opacity:0}],{duration});this.motions.add(a);a.finished.catch(()=>{}).finally(()=>this.motions.delete(a));}
-    anim.finished.catch(()=>{}).finally(()=>{el.remove();this.motions.delete(anim);});return 1000;
+    el.innerHTML=`<span class="counter-anchor counter-target" data-counter-play="${esc(e.parentId||'')}" ${this.v.pending?.effect?.delayed?'data-delayed="true"':''}><span class="counter-paper left">${this.cardFace(kind,previous?.cards.length===1?previous.cards[0]:null)}</span><span class="counter-paper right">${this.cardFace(kind,previous?.cards.length===1?previous.cards[0]:null)}</span></span><span class="counter-anchor counter-response" data-counter-play="${esc(e.id)}"><span class="counter-rise">${this.cardFace('wuxie',e.cards?.[0]||null)}</span></span>`;
+    document.querySelector('.table-arena').append(el);this.positionCounter(el);
+    const duration=this.motionChoice==='fast'?500:1000,anim=el.animate([{opacity:0},{opacity:1,offset:.12},{opacity:1,offset:.84},{opacity:0}],{duration});this.motions.add(anim);
+    for(const [index,part]of [...el.querySelectorAll('.counter-paper,.counter-rise')].entries()){
+      const frames=index<2?[{transform:'none',opacity:1},{transform:`translate(${index?4:-4}px,2px) rotate(${index?4:-4}deg)`,opacity:.8,offset:.48},{transform:`translate(${index?7:-7}px,3px)`,opacity:0}]:[{transform:'translateY(1px) scale(.97)',opacity:.6},{transform:'translateY(-9px) scale(1.02)',opacity:1,offset:.54},{transform:'translateY(2px) scale(.99)',opacity:1,offset:.78},{transform:'none',opacity:0}];
+      const a=part.animate(frames,{duration});this.motions.add(a);a.finished.catch(()=>{}).finally(()=>this.motions.delete(a));
+    }
+    anim.finished.catch(()=>{}).finally(()=>{el.remove();this.motions.delete(anim);});this.relations.start();return 1000;
   }
 
   dock(tab='table'){const dock=$('table-dock');dock.open=true;for(const name of ['table','logs','chat']){$('dock-'+name).hidden=name!==tab;document.querySelector(`[data-tab="${name}"]`).setAttribute('aria-selected',String(name===tab));}dock.scrollIntoView({behavior:'instant',block:'start'});}
@@ -199,7 +223,7 @@ export class Scene{
     if(name==='history-page'){this.ui.hooks.history?.();return true;}
     if(this.effects.control(name,b)||this.relations.control(name,b))return true;
     if(name==='recent-card'){const record=(this.v.playHistory||[]).findLast(p=>p.actor===b.dataset.player)||this.v.lastPublicPlay?.[b.dataset.player];if(record)this.openCard(record.kind,record.cards[0]||null,b.dataset.player,b,record);return true;}
-    if(name==='play-history'||name==='center-history'){const list=name==='play-history'?(this.v.playHistory||[]).filter(p=>p.actor===b.dataset.player):this.v.centerPlays||[];this.ui.detail('出牌记录 · 仅供查看',list.map(p=>`${this.v.players.find(t=>t.id===p.actor)?.name} · ${CARD_MAP[p.kind].name}${p.targets.length?' → '+p.targets.map(id=>this.v.players.find(t=>t.id===id)?.name).join('、'):''}${p.cards.length?'；材料 '+p.cards.map(id=>CARD_MAP[CARD_BY_ID[id].kind].name+' '+SUITS[CARD_BY_ID[id].suit]+rankText(CARD_BY_ID[id].rank)).join('、'):p.hiddenMaterials?'；材料扣置':'；无实体材料'}`).join('\n'));return true;}
+    if(name==='play-history'||name==='center-history'){const list=name==='play-history'?(this.v.playHistory||[]).filter(p=>p.actor===b.dataset.player):this.v.centerPlays||[];this.ui.detail('出牌记录 · 仅供查看',list.slice().reverse().map(p=>`${this.v.players.find(t=>t.id===p.actor)?.name} · ${CARD_MAP[p.kind].name}${p.targets.length?' → '+p.targets.map(id=>this.v.players.find(t=>t.id===id)?.name).join('、'):''}${p.cards.length?'；材料 '+p.cards.map(id=>CARD_MAP[CARD_BY_ID[id].kind].name+' '+SUITS[CARD_BY_ID[id].suit]+rankText(CARD_BY_ID[id].rank)).join('、'):p.hiddenMaterials?'；材料扣置':'；无实体材料'}`).join('\n'));return true;}
     if(name==='center-card'){const p=this.v.centerPlays.find(p=>p.id===b.dataset.play);if(p){this.relations.selected=p.id;this.openCard(p.kind,p.cards[0]||null,p.actor,b,p);}return true;}
     if(name==='card-info'){this.openCard(b.dataset.kind,b.dataset.id||null,b.dataset.player||null,b);return true;}
     if(name==='pile'){if(b.dataset.zone==='deck'&&this.v.flow?.skillWindow&&[1,2].includes(this.v.phase)&&!this.v.pending){if(!this.ui.busy)this.ui.hooks.dispatch(this.v.phase===2?'drawPhaseCard':'revealJudge',{windowId:this.v.flow.skillWindow.id});return true;}if(b.dataset.zone==='deck'&&this.v.pending?.kind==='judgeAwait'&&this.v.pending.player===this.v.you){if(!this.ui.busy)this.ui.hooks.dispatch('revealJudge',{windowId:this.v.pending.windowId});return true;}if(b.dataset.zone==='deck'&&this.v.flow?.draw?.remaining&&this.v.turn===this.v.you&&!this.v.pending){if(!this.ui.busy)this.ui.hooks.dispatch('drawPhaseCard',{windowId:this.v.flow.draw.id});}else if(b.dataset.zone==='deck')this.ui.detail('抽牌堆',`剩余 ${this.v.deckCount} 张，牌面与顺序不可查看。`);else if(b.dataset.zone==='discard')this.ui.hooks.act('discard-pile');else $('process-panel').open=!$('process-panel').open;return true;}

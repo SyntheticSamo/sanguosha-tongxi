@@ -1,4 +1,5 @@
 import {decodeSignal,invitationURL,localPreview} from '../sync/signals.js';
+import {readNickname,saveNickname} from './nickname.js';
 const $=id=>document.getElementById(id);
 const pathName={direct:'直连',relay:'中继',unknown:'连接已建立'};
 // Owns connection controls and transient timers, never the game state or seat tokens.
@@ -9,11 +10,11 @@ export class ConnectionUX{
   $('show-offer-code').addEventListener('click',()=>{const panel=$('signal-code-panel');panel.hidden=!panel.hidden;$('show-offer-code').setAttribute('aria-expanded',String(!panel.hidden));});
   $('answer-input').addEventListener('input',()=>{clearTimeout(this.pasteTimer);const text=$('answer-input').value;if(!text.trim()){$('answer-feedback').textContent='';return;}this.pasteTimer=setTimeout(()=>this.autoAccept(text),250);});
   $('offer-input').addEventListener('input',()=>{$('answer-output').value='';$('answer-ready').hidden=true;});
-  $('guest-name').addEventListener('change',()=>{try{localStorage.setItem('tongxi:guest-name',$('guest-name').value);}catch{}});
-  try{const name=localStorage.getItem('tongxi:guest-name');if(name)$('guest-name').value=name.slice(0,24);}catch{}
+  try{const name=readNickname(localStorage);if(name){$('guest-name').value=name;document.querySelector('#create-form [name=name]').value=name;}}catch{}
   for(const id of ['share-offer','share-answer'])$(id).hidden=typeof navigator.share!=='function';
   $('local-invite-note').hidden=!localPreview(location.href);
  }
+ rememberName(value){const name=String(value||'').trim().slice(0,24);if(!name)return;try{saveNickname(localStorage,name);}catch{}for(const field of [$('guest-name'),document.querySelector('#create-form [name=name]')])if(field!==document.activeElement&&field.value!==name)field.value=name;}
  reset(){this.epoch++;this.jobs.clear();this.pendingPeer?.close();this.pendingPeer=null;clearTimeout(this.pasteTimer);for(const t of this.timers.values())clearTimeout(t);this.timers.clear();this.acceptedText=null;this.inviteNo=0;for(const id of ['offer-output','offer-link','answer-input','answer-output'])$(id).value='';$('connection-enter').hidden=true;$('offer-ready').hidden=true;$('answer-ready').hidden=true;$('answer-feedback').textContent='';$('connection-retry').hidden=true;for(const [kind,label]of Object.entries({offer:'生成邀请链接',answer:'加入并生成回应',accept:'接收回应'})){const button=document.querySelector(`[data-do="${kind}"]`);button.disabled=false;button.textContent=label;}}
  run(kind,fn){
   if(this.jobs.has(kind))return this.jobs.get(kind);if(kind==='offer'){$('offer-output').value='';$('offer-link').value='';$('offer-ready').hidden=true;}if(kind==='answer'){$('answer-output').value='';$('answer-ready').hidden=true;}const epoch=this.epoch,button=document.querySelector(`[data-do="${kind}"]`),label=button?.textContent;
@@ -48,6 +49,6 @@ export class ConnectionUX{
   }
   if(['failed','closed','protocol-error'].includes(state)){clearTimeout(this.timers.get(link.id));this.timers.delete(link.id);if(!this.hooks.state().isHost)$('connection-enter').hidden=true;this.hooks.status(error||'连接已中断。房主重新生成邀请，好友在原标签页加入即可回到原席位。');$('connection-retry').hidden=false;}
  }
- synced(link){if(!link||!this.hooks.state().view)return;$('connection-enter').hidden=false;if(!link.synced||link.awaitingSync){link.synced=true;link.awaitingSync=false;this.hooks.status(this.hooks.state().isHost?'好友已入席，可继续邀请下一位。':'已入席，可以进入牌桌。');}}
+ synced(link){const {view,isHost}=this.hooks.state();if(!link||!view)return;$('connection-enter').hidden=false;if(!link.synced||link.awaitingSync){if(!isHost)this.rememberName(view.players.find(p=>p.id===view.you)?.name);link.synced=true;link.awaitingSync=false;this.hooks.status(isHost?'好友已入席，可继续邀请下一位。':'已入席，可以进入牌桌。');}}
  retry(){if(this.hooks.state().isHost)return this.hooks.offer();this.hooks.role('guest');$('offer-input').value='';$('answer-output').value='';$('answer-ready').hidden=true;$('offer-input').focus();this.hooks.status('请粘贴房主新发来的邀请，再点击加入；保留本标签页即可认领原席位。');}
 }

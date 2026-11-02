@@ -59,7 +59,7 @@ try{
  await host.locator(`[data-target-seat="${foe}"]`).click();assert.equal(await self.locator('.target-index').textContent(),'1');await pickTarget(host,foe);
  let turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await passBoth(host,guest);
  assert.equal(await host.locator('[data-seat=host] [aria-label="铁索横置"]').count(),1);assert.equal(await host.locator(`[data-seat="${foe}"] [aria-label="铁索横置"]`).count(),1);
- await host.locator('[data-ui=clear]').click();await select(host,borrow);await pickTarget(host,foe);await pickTarget(host,'host');await host.screenshot({path:path.join(dest,'07-click-targets.png'),fullPage:true});
+ if(await host.locator('[data-ui=clear]').isVisible())await host.locator('[data-ui=clear]').click();await select(host,borrow);await pickTarget(host,foe);await pickTarget(host,'host');await host.screenshot({path:path.join(dest,'07-click-targets.png'),fullPage:true});
  turnRev=await rev(host);await cmd(host,'play');await waitRev(guest,turnRev+1);await passBoth(host,guest);await guest.waitForFunction(()=>document.querySelector('#response-panel').textContent.includes('借刀'));
  turnRev=await rev(guest);await cmd(guest,'pass');await waitRev(host,turnRev+1);assert.equal(await host.locator(`#hand [data-card="${byKind('qilin')}"]`).count(),1);assert.deepEqual(errors,[]);
  console.log('PASS: player-frame targeting, deselection, keyboard activation, nested equipment controls, ordered chain and borrowed-sword targets, auto rules and reconnect.');

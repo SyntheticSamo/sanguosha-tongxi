@@ -71,7 +71,6 @@ export class TableMotion{
   else if(p.zone==='pool')el=document.querySelector(`[data-effect-card="${sel(id)}"]`)||document.querySelector(`[data-play="${sel(j.e.recordId)}"]`)||$('center-plays');
   else if(p.zone==='play'||p.zone==='center')el=document.querySelector(`[data-play="${sel(j.e.type==='play'?j.e.id:j.e.recordId)}"]`)||$('center-plays');
   else el=own?$('hand'):document.querySelector(`[data-hand-anchor="${sel(p.owner)}"]`);
-  const parent=destination&&j.e.type==='play'&&j.e.chainId&&document.querySelector(`[data-play="${sel(j.e.parentId)}"]`),parentPoint=parent?.checkVisibility?.()?center(parent):null;if(parentPoint)return {...parentPoint,x:parentPoint.x+parentPoint.w*.4,y:parentPoint.y-8};
   return center(el)||center($('center-plays'));
  }
  start(){if(this.frame||!this.queue.length&&!this.active.size&&!this.timeline.jobs.size)return;this.frame=requestAnimationFrame(t=>this.tick(t));}
