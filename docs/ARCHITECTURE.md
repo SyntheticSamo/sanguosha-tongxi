@@ -73,6 +73,10 @@ v8.3由`sync/signals.js`统一校验原始TX1连接码和邀请链接，限制�
 
 邀请和回应各自串行准备，重复操作复用同一进行中任务；接收同一回应可重复点击而不重建通道。新邀请先校验并成功生成回应，才替换已有好友连接；切换牌桌取消尚未完成的准备。断线时等待原通道自然恢复，恢复后请求授权sync；超过5秒仍未恢复才显示重邀入口，不后台重发游戏动作。实际连接路径只根据选中的ICE候选对显示直连／中继，不展示地址。详见[连接交付](CONNECTION_UX_V8_3.md)。
 
+v9 连接可靠性：手动模式下 `PeerLink.persist()` 在未连通且 ICE 为 failed／disconnected 时，每5秒以新 foundation 重新加入对方候选，最长6分钟，用来跨越手动交换的延迟（浏览器约15秒放弃检查）。`gathered()` 在拿到所需候选类型后即返回，8秒上限内有任何候选就继续，不再因“收集未完成”让邀请失败。
+
+可选自动配对：`sync/relay.js` 通过自托管 Worker（`cloudflare/signal-worker.js`，每房间一个 Durable Object，WebSocket Hibernation）交换 SDP 与 trickle 候选。房间号为 SHA-256(房主密钥) 前22位，房主首条消息提交密钥证明身份。好友发 `connect`，房主新建 PeerLink 发 offer；链接 failed 或 disconnected 超过4秒时由房主发起 ICE 重启。服务不接触 join／action／sync，席位仍由数据通道 hello 中的 sessionStorage 凭据认领。
+
 每消息最多512KiB，分片6000字符、最多90片、最多8个未完成重组，超30秒清除；接收重组后再检查字节数。发送使用缓冲水位背压，队列最多256片；房主每连接每秒最多20个消息。昵称、聊天与说明限制长度、渲染统一转义。没有音视频或摄像头/麦克风权限。
 
 ## v3.1 整桌展示（历史）

@@ -4,10 +4,13 @@ import { DECK,CARD_TYPES,CARD_MAP,CARD_BY_ID,SUITS,rankText,red,cardLabel,cardNa
 import { GENERALS,GENERAL_MAP,ROLES,PHASES,GENERAL_PACKS } from '../data/generals.js';
 import { distance,attackRange,equipKind } from '../backend/primitives.js';
 import { PeerLink,decodeSignal } from '../sync/rtc.js';
+import { parseRoomLink,saveRelayBase,relayBase } from '../sync/relay.js';
+import { AutoConnect } from './auto-connect.js';
 import { envelope,parseMessage,acceptSnapshot } from '../sync/protocol.js';
 import {skillSupport} from '../data/skill-support.js';
 import { Tabletop } from './tabletop.js';
 import { inspectUse,responseOptions,conversionKinds,discardAdvice } from '../backend/advisor.js';
+const FACTION_CLASS={'魏':'wei','蜀':'shu','吴':'wu','群':'qun'};
 
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,6 +19,10 @@ let lastTap=null,historyCache=null,rememberCreatedName=false;
 let selectedTargets=[],targetContext=null,lessonRequested=false;
 const ui=new Tabletop({state:()=>({view,isHost,pending,selection,selectedTargets}),toast,dispatch,act:name=>actions[name]?.(),selectTarget,history:requestHistory,arrange:sendArrange,practiceLesson:()=>{create(true,{quickStart:true,size:2});lessonRequested=true;}});
 const connections=new ConnectionUX({state:()=>({view,isHost}),role:role=>ui.connectRole(role),open:()=>open('connect-dialog'),status,toast,copy,accept,offer,peers:renderPeers});
+const auto=new AutoConnect({state:()=>({view,isHost}),status,peers:renderPeers,guestLink:()=>guestLink,
+  newLink:({roomId,onCandidate})=>{const link=new PeerLink({roomId,iceServers:iceServers(),onMessage:incoming,onStatus:rtcStatus,onCandidate});link.createdAt=Date.now();links.set(link.id,link);renderPeers();return link;},
+  dropLink:link=>{link.close();links.delete(link.id);renderPeers();},
+  newGuestLink:({roomId,linkId,onCandidate})=>{const link=new PeerLink({roomId,linkId,iceServers:iceServers(),onMessage:incoming,onStatus:rtcStatus,onCandidate}),previous=guestLink;guestLink=link;previous?.close();if(view&&view.roomId!==roomId)view=null;isHost=false;renderPeers();ui.connectionStep(2);return link;}});
 const me=()=>view?.players.find(p=>p.id===view.you);
 const target=()=>selectedTargets[0]||view?.you;
 const allowsTwoTargets=()=>ui.twoTargets();
@@ -33,7 +40,7 @@ function open(id){const d=$(id);if(!d.open)d.showModal();}
 function closeAll(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
 function status(message){$('connection-status').textContent=message;}
 function setBadge(text,ok=false){$('scene-network').title=text;$('scene-network').style.color=ok?'#a7c98e':'#d2b478';$('network-badge').innerHTML=`<i style="background:${ok?'#7d9b78':'#b19360'}"></i>${esc(text)}`;}
-function reset(){connections.reset();ui.reset();rememberCreatedName=false;lessonRequested=false;for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
+function reset(){connections.reset();auto.stop();ui.reset();rememberCreatedName=false;lessonRequested=false;for(const link of links.values())link.close();links.clear();guestLink?.close();guestLink=null;worker?.terminate();worker=null;clearTimeout(pendingTimer);pending=null;view=null;selection={ids:[],zone:'hand',owner:null};selectedTargets=[];targetContext=null;}
 function exitPractice(){
   if(!view)return;const online=!view.practice,host=isHost;
   closeAll();reset();isHost=false;actionCallback=null;clearTimeout(toastTimer);$('toast').hidden=true;
@@ -47,7 +54,7 @@ function startWorker(){
   worker.onmessage=e=>{
     const m=e.data;
     if(m.kind==='created'){ui.scene.openingRequested=true;rememberCreatedName=true;}else if(m.kind==='view'){
-      if(m.route==='host'){view=mergeHistory(m.view);if(rememberCreatedName){rememberCreatedName=false;if(!view.practice)connections.rememberName(view.players.find(p=>p.id===view.you)?.name);}if(lessonRequested&&view.practice){ui.coach=0;lessonRequested=false;}render();}
+      if(m.route==='host'){view=mergeHistory(m.view);if(rememberCreatedName){rememberCreatedName=false;if(!view.practice)connections.rememberName(view.players.find(p=>p.id===view.you)?.name);}if(lessonRequested&&view.practice){ui.coach=0;lessonRequested=false;}render();if(!view.practice&&auto.enabled)auto.host(view.roomId);}
       else {const link=links.get(m.route);if(link){link.seatId=m.view.you;link.displayName=m.view.players.find(p=>p.id===m.view.you)?.name;connections.synced(link);renderPeers();}sendRemote(m.route,envelope('snapshot',{view:m.view}));}
     }else if(m.kind==='history'){if(m.route==='host')acceptHistory(m.page);else sendRemote(m.route,envelope('snapshot',{historyPage:m.page}));
     }else if(m.kind==='ack'){
@@ -88,8 +95,11 @@ function hostOnly(kind,extra={}){if(!isHost||!worker)throw new Error('此操作�
 function create(practice=false,config={}){
   reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'create',config:{hostId:crypto.randomUUID(),token:crypto.randomUUID(),name:config.name||'演练玩家',size:Number(config.size||4),ex:config.ex??true,practice,mode:config.mode||'auto',deckSet:config.deckSet||'army',selectionMode:config.selectionMode||'random',quickStart:!!config.quickStart,skillAutomation:config.skillAutomation??true,completeSkills:true,interactionMode:'tactile',equipmentAutomation:true,tableExperience:true,generalPacks:config.generalPacks||Object.keys(GENERAL_PACKS)}});setBadge(practice?'本地演练':'房主 · 等待连接',true);
 }
+// Two independent public STUN providers on their standard ports; relay TURN only when
+// the optional signaling Worker supplied short-lived credentials.
+const DEFAULT_STUN=[{urls:['stun:stun.cloudflare.com:3478','stun:stun.l.google.com:19302']}];
 function iceServers(){
-  let servers=[];if($('use-stun').checked)servers.push({urls:'stun:stun.l.google.com:19302'});
+  let servers=[];if($('use-stun').checked)servers.push(...DEFAULT_STUN,...auto.ice);
   if($('ice-config').value.trim()){
     const custom=JSON.parse($('ice-config').value);if(!Array.isArray(custom)||custom.length>8)throw new Error('ICE 配置应为不超过 8 项的数组');
     for(const c of custom)if(!c||!c.urls||![c.urls].flat().every(u=>typeof u==='string'&&/^(stun|stuns|turn|turns):/.test(u)))throw new Error('ICE 服务器地址格式不正确');servers.push(...custom);
@@ -104,11 +114,17 @@ function rtcStatus(state,link,error){
     else {
       if(recovered){link.send(envelope('sync'));setBadge('P2P 已连接',true);return;}
       let token=sessionStorage.getItem('tongxi-seat:'+link.roomId);if(!token){token=crypto.randomUUID();sessionStorage.setItem('tongxi-seat:'+link.roomId,token);}
-      link.send(envelope('hello',{credentials:{name:$('guest-name').value||'无名侠客',token}}));setBadge('P2P 已连接',true);
+      const hello=()=>link.send(envelope('hello',{credentials:{name:$('guest-name').value||'无名侠客',token}}));hello();setBadge('P2P 已连接',true);
+      // On a fast LAN path the guest's channel can open before the host has even applied
+      // the reply, and that first hello is lost. Joining with the same seat token is
+      // idempotent, so repeat it until the first snapshot arrives.
+      let tries=0;const again=()=>{if(link.disposed||link.synced||link!==guestLink||link.channel?.readyState!=='open'||++tries>8)return;try{hello();}catch{}link.helloTimer=setTimeout(again,1200);};clearTimeout(link.helloTimer);link.helloTimer=setTimeout(again,1200);
     }
   }
   if(state==='disconnected'){ui.baseline();setBadge(isHost?'房主 · 网络波动':'网络波动 · 等待恢复');}
+  if(state==='failed'&&link.waiting){setBadge(isHost?'房主 · 等待好友连通':'等待房主接收回应');return;}
   if(['failed','closed','protocol-error'].includes(state)){ui.baseline();if(!isHost){setBadge('连接中断');ack();}else setBadge('房主 · 有玩家掉线');}
+  if(auto.track(state,link))setBadge(isHost?'房主 · 自动修复连接':'正在自动修复连接');
 }
 const rates=new Map();
 function incoming(raw,link){
@@ -132,13 +148,13 @@ function incoming(raw,link){
   }catch(error){toast(`联机消息：${error.message}`);}
 }
 function renderPeers(){
-  const all=isHost?[...links.values()]:guestLink?[guestLink]:[],names={new:'等待交换',connecting:'正在连接',connected:'正在建立通道',open:'已连接',disconnected:'网络波动',failed:'连接失败',closed:'已关闭','protocol-error':'连接异常'},paths={direct:'直连',relay:'中继'};
-  $('peer-status-list').textContent=all.filter(l=>!l.disposed).map(l=>`${l.displayName||(isHost?'邀请 '+(l.inviteNo||''):'房主')} · ${names[l.status||l.pc.connectionState]||'等待交换'}${l.pathType&&paths[l.pathType]?' · '+paths[l.pathType]:''}`).join('\n');
+  const all=isHost?[...links.values()]:guestLink?[guestLink]:[],names={new:'等待交换',connecting:'正在连接',connected:'正在建立通道',open:'已连接',disconnected:'网络波动',failed:'连接失败',closed:'已关闭','protocol-error':'连接异常',retrying:'仍在尝试连通'},paths={direct:'直连',relay:'中继'};
+  $('peer-status-list').textContent=all.filter(l=>!l.disposed).map(l=>`${l.displayName||(isHost?(l.relayPeer?'房间链接':'邀请 '+(l.inviteNo||'')):'房主')} · ${names[l.waiting&&['failed','disconnected'].includes(l.status||l.pc.connectionState)?'retrying':l.status||l.pc.connectionState]||'等待交换'}${l.pathType&&paths[l.pathType]?' · '+paths[l.pathType]:''}`).join('\n');
 }
 function offer(){return connections.run('offer',async()=>{
   if(!isHost||!view)throw new Error('先创建牌桌，再生成邀请');if(view.practice)throw new Error('演练仅限本地；请创建普通牌桌');
   status('正在准备邀请，请稍候…');
-  for(const [id,l]of links)if(['failed','closed'].includes(l.pc.connectionState)||!l.acceptedSDP&&l.createdAt&&Date.now()-l.createdAt>300000){l.close();links.delete(id);}
+  for(const [id,l]of links)if(!l.relayPeer&&(['failed','closed'].includes(l.pc.connectionState)||!l.acceptedSDP&&l.createdAt&&Date.now()-l.createdAt>900000)){l.close();links.delete(id);}
   if(links.size>=16)throw new Error('未完成邀请过多，请先让好友完成连接');
   const link=new PeerLink({roomId:view.roomId,iceServers:iceServers(),onMessage:incoming,onStatus:rtcStatus});link.createdAt=Date.now();links.set(link.id,link);
   try{const code=await link.offer();if(links.get(link.id)!==link||view?.roomId!==link.roomId)return;connections.offerReady(code,link);renderPeers();ui.connectionStep(1);status('邀请已准备好。分享链接给一位好友，收到回应后粘贴即可连接。');}
@@ -151,14 +167,14 @@ function answer(){return connections.run('answer',async()=>{
   if(guestLink?.channel?.readyState==='open'&&view?.status==='playing'&&view.roomId!==signal.roomId)throw new Error('请保留当前牌桌，在新标签页加入另一桌');
   const candidate=new PeerLink({roomId:signal.roomId,linkId:signal.linkId,iceServers:iceServers(),onMessage:incoming,onStatus:rtcStatus}),previous=guestLink;
   connections.pendingPeer=candidate;status('正在准备回应，请稍候…');
-  try{const code=await candidate.answer(signal);if(guestLink!==previous||epoch!==connections.epoch){candidate.close();return;}if(text!==$('offer-input').value)throw new Error('邀请已更改，请重新点击加入');candidate.offeredSDP=signal.sdp;candidate.answerCode=code;guestLink=candidate;previous?.close();view=null;isHost=false;connections.answerReady(code);renderPeers();ui.connectionStep(2);status('回应已准备好。复制或分享给房主，然后保留本页等待入席。');}
+  try{const code=await candidate.answer(signal);if(guestLink!==previous||epoch!==connections.epoch){candidate.close();return;}if(text!==$('offer-input').value)throw new Error('邀请已更改，请重新点击加入');candidate.offeredSDP=signal.sdp;candidate.answerCode=code;guestLink=candidate;previous?.close();candidate.persist();view=null;isHost=false;connections.answerReady(code);renderPeers();ui.connectionStep(2);status('回应已准备好。复制或分享给房主，然后保留本页等待入席。');}
   catch(e){candidate.close();if(epoch===connections.epoch)throw e;}
   finally{if(connections.pendingPeer===candidate)connections.pendingPeer=null;}
 });}
 function accept(text=$('answer-input').value){return connections.run('accept',async()=>{
   const epoch=connections.epoch,signal=await decodeSignal(text);if(epoch!==connections.epoch||text!==$('answer-input').value)return;if(signal.type!=='answer')throw new Error('这是一份邀请，请粘贴好友生成的回应');
   const link=links.get(signal.linkId);if(!isHost||!link||view?.roomId!==signal.roomId)throw new Error('没有匹配的邀请，请确认这是本桌好友的回应');
-  const changed=await link.accept(signal);if(epoch!==connections.epoch)return;connections.acceptedText=text;$('answer-feedback').textContent='✓ 回应已接收';
+  const changed=await link.accept(signal);if(changed)link.persist();if(epoch!==connections.epoch)return;connections.acceptedText=text;$('answer-feedback').textContent='✓ 回应已接收';
   status(link.channel?.readyState==='open'?'已连接，好友已入席。':changed?'回应已接收，正在建立连接…':'回应已接收，请等待连接。');
 });}
 function selectCard(id,zone,owner){
@@ -185,12 +201,12 @@ function renderLibrary(){
     $('library-content').innerHTML=list.map(g=>{
       const chosen=view?.players.find(p=>p.general===g.id);
       const can=view?.status==='lobby'&&view.selectionMode!=='random'&&view.generalPacks.includes(g.pack)&&(!chosen||chosen.id===view.you)&&(view.selectionMode!=='five'||view.choices.includes(g.id));
-      return `<article class="library-entry ${view?.choices.includes(g.id)?'candidate':''}"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.faction} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3><details><summary>技能 / 版本</summary>${g.skills.map(s=>`<p><b>${esc(s.name)}</b> <small>${skillSupport(g,s,view?.completeSkills??true).full?'':'本局范围见详情'}</small> · ${esc(s.text)}</p>`).join('')}<p class="muted">${esc(g.edition||'标准身份版')}${g.sourceNote?' · '+esc(g.sourceNote):''}</p><a class="text-link" href="${esc(g.source)}" target="_blank" rel="noreferrer">来源 ↗</a></details>${can?`<button class="secondary small full" data-general="${esc(g.id)}">${chosen?'已选':'选此武将'}</button>`:chosen?`<p class="muted">${esc(chosen.name)} 已选</p>`:''}</article>`;
+      return `<article class="library-entry faction-${FACTION_CLASS[g.faction]||'none'} ${view?.choices.includes(g.id)?'candidate':''}" data-seal="${esc(g.faction)}"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.faction} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3><span class="entry-hp" aria-hidden="true">${'<i></i>'.repeat(Math.max(0,Math.min(8,g.hp)))}</span><details><summary>技能 / 版本</summary>${g.skills.map(s=>`<p><b>${esc(s.name)}</b> <small>${skillSupport(g,s,view?.completeSkills??true).full?'':'本局范围见详情'}</small> · ${esc(s.text)}</p>`).join('')}<p class="muted">${esc(g.edition||'标准身份版')}${g.sourceNote?' · '+esc(g.sourceNote):''}</p><a class="text-link" href="${esc(g.source)}" target="_blank" rel="noreferrer">来源 ↗</a></details>${can?`<button class="secondary small full" data-general="${esc(g.id)}">${chosen?'已选':'选此武将'}</button>`:chosen?`<p class="muted">${esc(chosen.name)} 已选</p>`:''}</article>`;
     }).join('');
     if(view?.status==='lobby'&&view.selectionMode==='five'){
       const candidates=view.choices.map(id=>GENERAL_MAP[id]);
       const candidateIds=new Set(candidates.map(g=>g.id));
-      $('library-content').innerHTML=candidates.map(g=>`<article class="library-entry candidate"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3>${g.skills.map(k=>`<p><b>${esc(k.name)}</b> <small>${skillSupport(g,k,view?.completeSkills??true).full?'':'本局范围见详情'}</small> · ${esc(k.text)}</p>`).join('')}<button class="primary small full" data-general="${esc(g.id)}">选择</button></article>`).join('');
+      $('library-content').innerHTML=candidates.map(g=>`<article class="library-entry candidate faction-${FACTION_CLASS[g.faction]||'none'}" data-seal="${esc(g.faction)}"><span class="entry-faction">${GENERAL_PACKS[g.pack]} · ${g.hp} 体力</span><h3>${esc(g.name)}</h3><span class="entry-hp" aria-hidden="true">${'<i></i>'.repeat(Math.max(0,Math.min(8,g.hp)))}</span>${g.skills.map(k=>`<p><b>${esc(k.name)}</b> <small>${skillSupport(g,k,view?.completeSkills??true).full?'':'本局范围见详情'}</small> · ${esc(k.text)}</p>`).join('')}<button class="primary small full" data-general="${esc(g.id)}">选择</button></article>`).join('');
       ui.scene.deal(candidates);
     }
   }else $('library-content').innerHTML=CARD_TYPES.filter(c=>`${c.name}${c.type}${c.rule}`.includes(q)).map(c=>{
@@ -215,7 +231,9 @@ const actions={
   correct:()=>{hostOnlyCheck();dispatch('correct',{op:$('correction-op').value,target:target(),value:Number($('correction-value').value),reason:$('correction-reason').value});},
   create:()=>open('create-dialog'),
   join:()=>{ui.connectRole('guest');open('connect-dialog');$('offer-input').focus();},
-  connect:()=>{ui.connectRole(isHost?'host':'guest');open('connect-dialog');},
+  connect:()=>{ui.connectRole(isHost?'host':'guest');auto.render();open('connect-dialog');},
+  'join-room':()=>{if(isHost&&view&&!view.practice)throw new Error('当前设备正在主持牌桌，请用另一个标签页加入');if(isHost&&view?.practice){reset();isHost=false;setBadge('本地就绪',true);}connections.rememberName($('guest-name').value);auto.join();},'copy-room':()=>copy($('room-link')),
+  'share-room':async()=>{const url=$('room-link').value;if(!url)throw new Error('房间链接尚未就绪');if(typeof navigator.share==='function'){try{await navigator.share({title:'同席 · 一起玩三国杀',text:'打开链接、确认昵称即可入席。',url});return;}catch(e){if(e.name==='AbortError')return;}}await copy($('room-link'));},
   practice:()=>create(true,{quickStart:true}),'exit-practice':exitPractice,tutorial:()=>{closeAll();document.querySelector('#tutorial-dialog [data-ui=tutorial-start]').textContent=view?'在当前牌桌显示提示':'进入教学演练';open('tutorial-dialog');},
   'practice-gain':()=>{libraryGain=true;libraryMode='cards';$('library-search').value='';renderLibrary();open('library-dialog');},
   library:()=>{libraryGain=false;if(view?.status==='lobby'&&view.selectionMode!=='random')libraryMode='generals';renderLibrary();open('library-dialog');},rules:()=>open('rules-dialog'),tools:()=>open('tools-dialog'),
@@ -289,5 +307,11 @@ document.addEventListener('change',e=>{if(e.target.id==='control-seat')hostOnly(
 $('import-file').addEventListener('change',async e=>{try{const file=e.target.files[0];if(!file)return;if(file.size>2_000_000)throw new Error('恢复文件过大');const snapshot=JSON.parse(await file.text());reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'restore',snapshot});setBadge('房主 · 导入恢复',true);}catch(error){toast(error.message);}finally{e.target.value='';}});
 $('library-dialog').addEventListener('close',()=>{if(libraryGain){libraryGain=false;$('practice-gain').focus({preventScroll:true});}});
 $('home-link').addEventListener('click',e=>{e.preventDefault();if(view){$('game').scrollIntoView({behavior:'smooth'});}else window.scrollTo({top:0,behavior:'smooth'});});
-connections.initial();
+(()=>{
+  $('relay-url').value=relayBase();$('share-room').hidden=typeof navigator.share!=='function';
+  $('relay-url').addEventListener('change',()=>{try{const v=saveRelayBase($('relay-url').value);$('relay-url').value=relayBase();toast(v?'已保存自动配对服务地址。':'已关闭自动配对，使用手动交换。');if(isHost&&view&&!view.practice){auto.stop();if(auto.enabled)auto.host(view.roomId);}auto.render();}catch(e){toast(e.message);}});
+  let target=null;try{target=parseRoomLink(location.href);}catch(e){history.replaceState(null,'',location.pathname+location.search);toast(e.message);}
+  if(target){history.replaceState(null,'',location.pathname+location.search);auto.openJoin(target);ui.connectRole('guest');open('connect-dialog');status('房间链接已打开。确认昵称后点击「加入牌桌」。');$('guest-name').focus();$('guest-name').select();}
+  else {connections.initial();auto.render();}
+})();
 window.addEventListener('beforeunload',e=>{if(view?.status==='playing'){e.preventDefault();e.returnValue='';}});

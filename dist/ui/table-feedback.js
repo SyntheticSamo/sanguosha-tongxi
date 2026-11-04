@@ -42,6 +42,10 @@ export class TableFeedback{
   const el=seat(e.player);if(!el)return;const damage=e.type==='damage',heal=e.type==='heal',delta=damage?-e.amount:e.amount;
   const label=document.createElement('span');label.className=`hp-float ${e.type}`;label.textContent=`${e.type==='correction'?'纠正 ':e.type==='maxHp'?'上限 ':e.type==='hp'?'体力 ':''}${delta>0?'+':''}${delta}`;el.append(label);this.nodes.add(label);
   const duration=this.reduce?700:1000;setTimeout(()=>{label.remove();this.nodes.delete(label);},duration);
+  if((damage||heal)&&!this.reduce){
+   const flash=document.createElement('span');flash.className=`seat-flash ${damage?'hurt':'heal'}`;flash.setAttribute('aria-hidden','true');el.append(flash);this.nodes.add(flash);setTimeout(()=>{flash.remove();this.nodes.delete(flash);},700);
+   if(damage)this.play(el,[{translate:'0 0'},{translate:'-6px 1px',offset:.12},{translate:'5px -1px',offset:.28},{translate:'-3px 0',offset:.46},{translate:'2px 0',offset:.64},{translate:'0 0'}],440);
+  }
   if(damage||heal){
    const p=this.v.players.find(p=>p.id===e.player),cells=[...el.querySelectorAll('.hp-cell')],after=e.hpAfter??p.hp,from=heal?Math.max(0,after-e.amount):Math.max(0,after),to=heal?Math.min(cells.length,after):Math.min(cells.length,after+e.amount),changed=cells.slice(from,to);
    for(let i=0;i<changed.length;i++){const cell=changed[i],frames=heal?[{background:'#315947',opacity:.3,scale:.7},{background:'#c7dda0',opacity:1,scale:1}]:[{background:'#d4d7ab',clipPath:'inset(0)'},{background:'#e1a083',clipPath:'polygon(0 0,45% 0,35% 55%,65% 45%,50% 100%,0 100%)',offset:.5},{background:'#234839',opacity:.4,scale:.7}];this.play(cell,frames,Math.min(400,220+i*70));}

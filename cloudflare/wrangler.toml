@@ -1,0 +1,21 @@
+# Optional signaling Worker for 同席. Deploy with: npx wrangler deploy (from this folder).
+name = "tongxi-signal"
+main = "signal-worker.js"
+compatibility_date = "2025-10-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "SignalRoom"
+
+# The Workers Free plan only offers SQLite-backed Durable Objects.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRoom"]
+
+[vars]
+# Comma-separated page origins allowed to open signaling sockets. Leave empty to allow any.
+ALLOWED_ORIGINS = "https://syntheticsamo.github.io,http://localhost:4173"
+
+# Optional Cloudflare Realtime TURN (relay for strict NATs). Set as secrets, never here:
+#   npx wrangler secret put TURN_KEY_ID
+#   npx wrangler secret put TURN_KEY_API_TOKEN

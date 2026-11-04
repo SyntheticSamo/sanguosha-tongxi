@@ -1,0 +1,160 @@
+/* v9 · 牌面、席位与动效收尾层。最后加载，只覆盖视觉；不改变任何交互命中区域的语义。 */
+:root{
+ --brush:"STKaiti","KaiTi","Kaiti SC","BiauKai","楷体",var(--serif);
+ --suit-red:#b3322a;--suit-black:#1b2925;
+ --t-basic:#9a3d2c;--t-trick:#2f5687;--t-delay:#6c4482;--t-equip:#8a6823;
+ --wei:#4673b4;--shu:#c14e3c;--wu:#3f9150;--qun:#958f7f;
+ --spring:cubic-bezier(.34,1.5,.6,1);--settle:cubic-bezier(.2,.8,.2,1);
+ --card-paper:radial-gradient(130% 90% at 26% 10%,#fffbf2 0%,#f5edd7 46%,#e6dbbb 100%);
+ --magatama:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M7.4 8.6A7 7 0 1 1 14.2 16.1C11.9 17.6 9.6 20.2 9.3 23.2 5.1 20.6 3.6 15.6 5.2 11.4 5.6 10.4 6.4 9.4 7.4 8.6ZM14.6 7.1a2 2 0 1 0 .01 0Z'/%3E%3C/svg%3E");
+ --card-back:radial-gradient(circle at 50% 50%,#d8bd74 0 .7px,transparent 1.1px) 0 0/6px 6px,linear-gradient(135deg,#2f604b,#1c4033);
+}
+
+/* ---------- 牌面：四个角色共用一套容器尺寸排版 ---------- */
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card){
+ container-type:size;display:block;padding:0;overflow:hidden;text-align:left;
+ background:var(--card-paper);color:#1d342b;border:1px solid #ad9a66;
+ box-shadow:inset 0 0 0 2px #fbf6e6,inset 0 0 0 3px color-mix(in srgb,var(--frame,#c9b685) 55%,transparent),0 2px 6px #0000004d;
+}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card):has(.type-trick){--frame:var(--t-trick)}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card):has(.type-delay){--frame:var(--t-delay)}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card):has(.type-equip){--frame:var(--t-equip)}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) .card-meta{
+ position:absolute;left:7cqw;top:5cqh;display:flex;flex-direction:column;align-items:center;
+ font:700 clamp(6px,17cqw,18px)/.92 Georgia,"Times New Roman",var(--serif);letter-spacing:-.03em;color:var(--suit-black);white-space:nowrap;text-align:center;
+}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) .card-meta.red-card{color:var(--suit-red)}
+.card-meta .card-rank{font-weight:inherit}
+.card-meta .card-suit{font-style:normal;font-size:.9em;margin-top:.06em}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) :is(.card-name,.card-name.name-long,.card-name.name-xlong){
+ position:absolute;left:50%;top:47%;translate:-50% -50%;margin:0;max-height:none;overflow:visible;
+ writing-mode:vertical-rl;white-space:nowrap;line-height:1;letter-spacing:.04em;
+ font-family:var(--brush);font-weight:600;font-size:min(calc(60cqh / var(--letters,2)),44cqw);
+ color:#1a3027;text-shadow:0 1px 0 #ffffffa0;opacity:1;
+}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) .card-category{
+ position:absolute;left:50%;bottom:4.5cqh;translate:-50% 0;padding:.2em .75em;border-radius:99px;
+ font:500 clamp(5px,9.5cqw,10px)/1.05 var(--sans);letter-spacing:.12em;white-space:nowrap;
+ color:#fff8e6;background:var(--t-basic);box-shadow:0 1px 0 #fff6 inset;
+}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) .card-category.type-trick{background:var(--t-trick)}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) .card-category.type-delay{background:var(--t-delay)}
+:is(#game .playing-card,#game .zone-card,#game .center-card,.flying-card) .card-category.type-equip{background:var(--t-equip)}
+@container (max-width:44px){
+ .card-category{opacity:0}
+ .card-meta{font-size:max(6px,19cqw)!important}
+}
+#game .center-card>small{position:absolute;left:4%;right:4%;bottom:17cqh;text-align:center;font-size:clamp(6px,10cqw,9px);line-height:1.1;color:#5b5a45;background:#f4ecd5d9;border-radius:3px}
+#game .center-card.countered{filter:grayscale(.6) brightness(.92)}
+
+/* ---------- 手牌：始终清晰；按可用宽度自动收紧重叠 ---------- */
+#game #hand .playing-card{opacity:1}
+#game #hand .playing-card.unavailable{opacity:1;filter:saturate(.35) brightness(.86) contrast(.95)}
+#game #hand .playing-card.playable{box-shadow:inset 0 0 0 2px #fbf6e6,inset 0 0 0 3px color-mix(in srgb,var(--frame,#c9b685) 55%,transparent),0 0 0 1px #e8d391,0 3px 9px #0006}
+#game #hand .playing-card.selected,#game #hand .playing-card.selected:hover{filter:none;border-color:#f3cd70;box-shadow:inset 0 0 0 2px #fff8df,0 0 0 2px #f5d27a,0 0 22px #f2c66b99,0 10px 18px #0006}
+#game #hand .playing-card.response-material:not(.selected){box-shadow:inset 0 0 0 2px #fbf6e6,0 0 0 2px #9fd6c6,0 0 14px #9fd6c677}
+#game #hand-panel:not(.private-skill) #hand>.card-shell{
+ --card-w:82px;--card-h:112px;--overlap:16px;
+ flex:0 1 calc(var(--card-w) - var(--overlap));width:auto;min-width:12px;height:var(--card-h);margin-left:0;
+ transition:transform .26s var(--spring),filter .2s;
+}
+#game #hand-panel:not(.private-skill) #hand>.card-shell:last-child{flex:0 0 var(--card-w)}
+#game #hand-panel:not(.private-skill) #hand>.card-shell>.playing-card{position:absolute;left:0;bottom:0;width:var(--card-w);height:var(--card-h)}
+#game #hand-panel:not(.private-skill) #hand>.card-shell:hover,#game #hand-panel:not(.private-skill) #hand>.card-shell:focus-within{transform:translateY(-16px) rotate(0) scale(1.04)}
+#game #hand-panel:not(.private-skill) #hand>.card-shell:has(.selected){transform:translateY(-20px) rotate(0)}
+#game #hand-panel:not(.private-skill) #hand{justify-content:center;overflow-x:auto}
+@media(max-height:760px) and (min-width:761px){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:74px;--card-h:102px;--overlap:14px}}
+@media(max-width:760px){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:62px;--card-h:88px;--overlap:12px}#game #hand-panel:not(.private-skill) #hand{padding-left:6px;padding-right:6px}}
+@media(max-height:500px) and (orientation:landscape){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:46px;--card-h:64px;--overlap:9px}}
+
+/* ---------- 牌背 ---------- */
+.card-backs i{background:var(--card-back)!important;border-color:#cdb46e!important}
+.pile.deck .pile-top{background:var(--card-back);box-shadow:inset 0 0 0 2px #1d4033,inset 0 0 0 3px #cdb46e88}
+.pile.deck .pile-top{container-type:inline-size}.pile.deck .pile-top b{font-size:0}
+.pile.deck .pile-top::after{content:"同席";position:absolute;left:50%;top:50%;translate:-50% -50%;writing-mode:vertical-rl;padding:.35em .22em;white-space:nowrap;border:1px solid #d9bf7a;border-radius:3px;background:#1d4033;color:#f1dfa6;font:600 clamp(7px,22cqw,13px)/1 var(--brush);letter-spacing:.12em}
+.flight-back{position:absolute;inset:0;margin:0;display:grid;place-items:center;background:var(--card-back);color:#f1dfa6;font:600 13px var(--brush);letter-spacing:.1em;writing-mode:vertical-rl}
+
+/* ---------- 席位：势力色、勾玉体力、当前回合光环 ---------- */
+#game .seat{--fc:#86a08a}
+#game .seat.faction-wei{--fc:var(--wei)}#game .seat.faction-shu{--fc:var(--shu)}#game .seat.faction-wu{--fc:var(--wu)}#game .seat.faction-qun{--fc:var(--qun)}
+#game .seat:not(.mine){background:linear-gradient(158deg,color-mix(in srgb,var(--fc) 30%,#28503f) 0%,#21483a 46%,#1b3c31 100%);border-color:color-mix(in srgb,var(--fc) 60%,#a6bd9a)}
+#game .seat.mine{background:linear-gradient(158deg,color-mix(in srgb,var(--fc) 34%,#3f6a4e) 0%,#2f5a44 52%,#284f3c 100%);border-color:color-mix(in srgb,var(--fc) 50%,#d9cf9c)}
+#game .seat.faction-none{--fc:#6f8a75}
+#game .faction-icon circle{fill:var(--fc,#234637);stroke:#f4e8c3b0;stroke-width:1.2}
+#game .faction-icon text{fill:#fff8e8;font-weight:600}
+.hero-lettering text{font-family:var(--brush);font-weight:600;fill:#f4efda;paint-order:stroke;stroke:#10251d55;stroke-width:.6px}
+#game .seat::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;z-index:-1;opacity:0;transition:opacity .3s}
+#game .seat.current::after{opacity:1;box-shadow:0 0 0 2px #efcd7f,0 0 26px 2px #efcd7f66;animation:turn-ring 2.8s ease-in-out infinite}
+@keyframes turn-ring{50%{box-shadow:0 0 0 2px #f8dd9b,0 0 38px 6px #f2d07e70}}
+#game .seat.dead{filter:grayscale(1) brightness(.75)}
+
+#game .hp-cells{--hp:11px;display:flex;align-items:center;gap:calc(var(--hp)*.38);height:auto;max-width:none;flex-wrap:nowrap}
+#game .hp-cell{width:var(--hp);height:var(--hp);margin:0;border:0;border-radius:0;background:radial-gradient(circle at 60% 36%,#7d9c89,#36594a 72%);opacity:.62;box-shadow:none;-webkit-mask:var(--magatama) center/contain no-repeat;mask:var(--magatama) center/contain no-repeat}
+#game .hp-cell.full{opacity:1;--jade:#58b86a;--jade-hi:#d2f7cb;--jade-lo:#23743a;background:radial-gradient(circle at 62% 30%,var(--jade-hi) 0 16%,var(--jade) 46%,var(--jade-lo) 100%)}
+#game .hp-mid .hp-cell.full{--jade:#e2b23e;--jade-hi:#fff1b8;--jade-lo:#9c6a14}
+#game .hp-low .hp-cell.full,#game .low-hp .hp-low .hp-cell.full{--jade:#de5640;--jade-hi:#ffd2bf;--jade-lo:#8f2416}
+#game .hp-low .hp-cell.full{animation:hp-pulse 1.6s ease-in-out infinite}
+@keyframes hp-pulse{50%{filter:brightness(1.35) drop-shadow(0 0 2px #ff7a5c)}}
+@media(max-width:999px),(max-height:599px){#game .hp-cells{--hp:9px}}
+@media(max-height:500px) and (orientation:landscape){#game .hp-cells{--hp:7px}}
+
+/* 其他角色的空装备栏收成小圆点；有装备时仍按原尺寸显示牌面。 */
+#game .seat:not(.mine) .gear-slots{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:auto;align-items:start;height:auto;gap:4px}
+#game .seat:not(.mine) .gear-slot:not(.occupied){width:9px;height:9px;padding:0;border:1px solid #c8d3ac55;border-radius:50%;background:#173a2f;gap:0;align-self:center}
+#game .seat:not(.mine) .gear-slot:not(.occupied)>*{display:none}
+#game .seat:not(.mine) .gear-slot.abolished{background:repeating-linear-gradient(45deg,#c9806f88 0 1.5px,transparent 1.5px 3px)}
+#game .seat.mine .gear-slot:not(.occupied){border-color:#c3d0a44d;background:#1e4335aa;color:#cbd6b199}
+#game .seat.mine .gear-slot:not(.occupied) small{display:none}
+#game .gear-slot:not(.occupied):is(:hover,:focus-visible){border-color:#e7d397;color:#f0e3b8}
+
+/* ---------- 阶段条：写出阶段名 ---------- */
+#game .phase-cell{width:auto;min-width:0;height:22px;padding:0 7px;border-radius:11px;font:11px/1 var(--sans);letter-spacing:.06em;display:inline-flex;align-items:center;gap:3px;transition:background .25s,color .25s,box-shadow .25s}
+#game .phase-cell>span{display:none}
+#game .phase-cell>small{display:inline;position:static;transform:none;background:none;color:inherit;padding:0;font:inherit;border-radius:0;z-index:auto}
+#game .phase-cell.past{background:#355f4d;color:#cfe0c3;border-color:#6f9a7a66}
+#game .phase-cell.past>small::before{content:"✓";margin-right:2px;font-size:.85em;opacity:.8}
+#game .phase-cell.current{background:linear-gradient(#f1d58f,#ddb56b);color:#2a3f2f;border-color:#ffe7ae;box-shadow:0 0 0 2px #f2d48b33,0 0 14px #ecc87655;font-weight:600}
+#game .phase-track{gap:4px}
+#game .stage-header .phase-cell{width:auto;min-width:0}
+#game .stage-header .phase-cell,#game .phase-cell{height:21px}
+@media(max-width:600px){#game .phase-cell{height:19px;padding:0 5px;font-size:10px;letter-spacing:0}#game .phase-cell.past>small::before{display:none}}
+@media(max-height:500px) and (orientation:landscape){#game .stage-header .phase-cell{height:18px;padding:0 5px;font-size:9px;letter-spacing:0}#game .phase-cell.past>small::before{display:none}}
+
+/* ---------- 桌心：出牌更大 ---------- */
+@media(min-width:1000px) and (min-height:700px){
+ #game .center-plays:has(.center-card){height:112px}
+ #game .center-card{width:74px;height:104px}
+}
+
+/* ---------- 提示条移出手牌区 ---------- */
+body:has(#game:not([hidden])) .toast{top:58px;bottom:auto!important;border-radius:999px;padding:9px 18px;background:#183f33f2;box-shadow:0 8px 28px #0006;animation:toast-in .3s var(--settle)}
+@keyframes toast-in{from{opacity:0;translate:0 -8px}}
+@media(max-height:500px) and (orientation:landscape){body:has(#game:not([hidden])) .toast{top:36px}}
+
+/* ---------- 动效：受击与回复 ---------- */
+.seat-flash{position:absolute;inset:-2px;border-radius:inherit;pointer-events:none;z-index:9;opacity:0;animation:seat-flash .62s ease-out}
+.seat-flash.hurt{background:radial-gradient(circle at 50% 45%,#ff6b4a99,#c0302055 55%,transparent 75%);box-shadow:0 0 0 2px #ff7b5e,0 0 30px #ff5a3d}
+.seat-flash.heal{background:radial-gradient(circle at 50% 45%,#b9f2a888,transparent 70%);box-shadow:0 0 0 2px #b4e7a1,0 0 26px #9ee28a}
+@keyframes seat-flash{15%{opacity:1}100%{opacity:0}}
+
+/* ---------- 典藏：武将卡片带势力色 ---------- */
+.library-entry{position:relative;overflow:hidden}
+.library-entry[class*=faction-]{border-left:4px solid var(--fc,#8d9a85)}
+.library-entry.faction-wei{--fc:var(--wei)}.library-entry.faction-shu{--fc:var(--shu)}.library-entry.faction-wu{--fc:var(--wu)}.library-entry.faction-qun{--fc:var(--qun)}
+.library-entry[data-seal]::after{content:attr(data-seal);position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--fc);color:#fff8e8;font:600 15px var(--brush);box-shadow:0 0 0 2px #fff8,0 2px 6px #0002}
+.library-entry h3{font-family:var(--brush);font-size:28px;letter-spacing:.06em}
+.entry-hp{display:flex;gap:4px;margin:2px 0 6px}
+.entry-hp i{width:13px;height:13px;background:radial-gradient(circle at 62% 30%,#d2f7cb 0 16%,#58b86a 46%,#23743a 100%);-webkit-mask:var(--magatama) center/contain no-repeat;mask:var(--magatama) center/contain no-repeat}
+
+/* ---------- 减少动态 ---------- */
+[data-motion=reduce] #game .seat.current::after,[data-motion=reduce] #game .hp-low .hp-cell.full{animation:none}
+[data-motion=reduce] .seat-flash{display:none}
+[data-motion=reduce] #game #hand>.card-shell{transition:none}
+@media(prefers-reduced-motion:reduce){[data-motion=system] #game .seat.current::after,[data-motion=system] #game .hp-low .hp-cell.full{animation:none}}
+
+/* ---------- 自动配对 ---------- */
+#connect-dialog .room-invite{margin:4px 0 12px;padding:12px 14px;border:1px solid #c9d3b8;border-radius:10px;background:linear-gradient(135deg,#f1f5e8,#fbf8ee)}
+#connect-dialog .room-invite h3{margin:0 0 4px}
+#connect-dialog .room-invite input{font-size:12px}
+#connect-dialog .relay-status{font-size:11px;margin:4px 0 10px}
+#connect-dialog .relay-status:empty{display:none}

@@ -47,6 +47,7 @@ export class ConnectionUX{
    link.interrupted=true;this.hooks.status('网络波动，正在等待连接恢复…');
    if(!this.timers.has(link.id))this.timers.set(link.id,setTimeout(()=>{this.timers.delete(link.id);if(link.disposed||link.pc.connectionState!=='disconnected')return;this.hooks.status('连接暂未恢复。可继续等待，或重新交换邀请；原席位会保留。');$('connection-retry').hidden=false;},5000));
   }
+  if(state==='failed'&&link.waiting){const long=(link.rearmed||0)>=3?'已尝试约一分钟：若对方确已粘贴仍连不上，可能有一方处于对称型NAT，需要TURN中继（网络设置）。':'';this.hooks.status(long||(this.hooks.state().isHost?'仍在尝试连通好友：对方保留页面即可，无需重新邀请。':'仍在尝试连通房主：请确认房主已粘贴你的回应，并保持本页打开。'));return;}
   if(['failed','closed','protocol-error'].includes(state)){clearTimeout(this.timers.get(link.id));this.timers.delete(link.id);if(!this.hooks.state().isHost)$('connection-enter').hidden=true;this.hooks.status(error||'连接已中断。房主重新生成邀请，好友在原标签页加入即可回到原席位。');$('connection-retry').hidden=false;}
  }
  synced(link){const {view,isHost}=this.hooks.state();if(!link||!view)return;$('connection-enter').hidden=false;if(!link.synced||link.awaitingSync){if(!isHost)this.rememberName(view.players.find(p=>p.id===view.you)?.name);link.synced=true;link.awaitingSync=false;this.hooks.status(isHost?'好友已入席，可继续邀请下一位。':'已入席，可以进入牌桌。');}}
