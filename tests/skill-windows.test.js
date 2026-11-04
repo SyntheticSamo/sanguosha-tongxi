@@ -16,7 +16,8 @@ function game(g='zhanghe'){
  delete s.skillMoveBaseline;observeCompleteMoves(s);s.rules.queue=[];return s;
 }
 function card(s,i,kind,zone='hand'){
- const id=deckFor(s.deckSet,s.ex).find(c=>c.kind===kind&&!s.players[i][zone].includes(c.id)).id;
+ // Single-copy kinds (木牛流马) can already be in this zone from the random opening deal.
+ const copies=deckFor(s.deckSet,s.ex).filter(c=>c.kind===kind),free=copies.find(c=>!s.players[i][zone].includes(c.id));if(!free)return copies[0].id;const id=free.id;
  for(const z of [s.deck,s.discard,s.pool,...s.players.flatMap(p=>[p.hand,p.equip,p.judge])]){const n=z.indexOf(id);if(n>=0)z.splice(n,1);}s.players[i][zone].push(id);return id;
 }
 function enter(s,phase){s.phase=phase;s.rules=freshRules();s.flow={paused:false};delete s.skillMoveBaseline;observeCompleteMoves(s);s.rules.queue=[];completePhase(s,s.players[0],phase);s.rules.queue.push({type:'completePhaseBody',owner:'host'});pump(s);validateState(s);return s;}
