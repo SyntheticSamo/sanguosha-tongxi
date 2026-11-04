@@ -305,7 +305,9 @@ $('general-pack-options').innerHTML=Object.entries(GENERAL_PACKS).map(([id,name]
 $('library-pack').innerHTML='<option value="">全部</option>'+Object.entries(GENERAL_PACKS).map(([id,name])=>`<option value="${id}">${name}</option>`).join('');
 document.addEventListener('change',e=>{if(e.target.id==='control-seat')hostOnly('control',{seat:e.target.value});});
 $('import-file').addEventListener('change',async e=>{try{const file=e.target.files[0];if(!file)return;if(file.size>2_000_000)throw new Error('恢复文件过大');const snapshot=JSON.parse(await file.text());reset();isHost=true;startWorker();closeAll();worker.postMessage({kind:'restore',snapshot});setBadge('房主 · 导入恢复',true);}catch(error){toast(error.message);}finally{e.target.value='';}});
-$('library-dialog').addEventListener('close',()=>{if(libraryGain){libraryGain=false;$('practice-gain').focus({preventScroll:true});}});
+$('library-dialog').addEventListener('close',()=>{if(libraryGain){libraryGain=false;const b=$('practice-gain'),until=performance.now()+3000;
+  // The last gain may still await confirmation, which keeps the button disabled; disabled buttons cannot take focus.
+  const back=()=>{if(!b.disabled)b.focus({preventScroll:true});else if(performance.now()<until&&!document.querySelector('dialog[open]'))requestAnimationFrame(back);};back();}});
 $('home-link').addEventListener('click',e=>{e.preventDefault();if(view){$('game').scrollIntoView({behavior:'smooth'});}else window.scrollTo({top:0,behavior:'smooth'});});
 (()=>{
   $('relay-url').value=relayBase();$('share-room').hidden=typeof navigator.share!=='function';
