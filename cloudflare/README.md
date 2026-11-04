@@ -26,12 +26,21 @@
 
 ## 部署
 
-需要 Cloudflare 账号与 Node.js 22+。
+需要 Cloudflare 账号（免费）与 Node.js 22+。`wrangler.toml` 的 `ALLOWED_ORIGINS` 已填 GitHub Pages 来源与本机预览；换了托管地址时先改这里（只写来源，不含路径）。
+
+**一键脚本**（在项目目录的 PowerShell 中）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File cloudflare\deploy.ps1
+```
+
+脚本依次：登录 Cloudflare（浏览器授权）→ 部署 → 让你粘贴输出的 `workers.dev` 地址并做健康检查 → 写入 `dist/sync/relay-config.js` → 可选设置 TURN 机密。可重复运行。
+
+**手动**：
 
 ```powershell
 cd cloudflare
 npx wrangler login
-# 编辑 wrangler.toml 中的 ALLOWED_ORIGINS，填你托管网页的来源（不含路径）
 npx wrangler deploy
 ```
 
@@ -46,7 +55,7 @@ npx wrangler deploy
 
 双方都在对称型 NAT（常见于手机流量、部分校园网／公司网）时，直连无法打通，需要 TURN 中继。
 
-1. 按 [生成 TURN 凭据](https://developers.cloudflare.com/realtime/turn/generate-credentials/) 在 Cloudflare 控制台的 Realtime TURN 页面创建 TURN key，记下 Key ID 与 API Token。
+1. 打开 [Cloudflare 控制台 Realtime](https://dash.cloudflare.com/?to=/:account/calls)，在 TURN 部分创建 TURN key，记下 Key ID 与 API Token（见 [生成 TURN 凭据](https://developers.cloudflare.com/realtime/turn/generate-credentials/)）。也可以在 `deploy.ps1` 第5步按提示粘贴。
 2. 设为 Worker 机密（不要写进文件或仓库）：
 
 ```powershell
