@@ -53,6 +53,7 @@
 #game #hand .playing-card.playable{box-shadow:inset 0 0 0 2px #fbf6e6,inset 0 0 0 3px color-mix(in srgb,var(--frame,#c9b685) 55%,transparent),0 0 0 1px #e8d391,0 3px 9px #0006}
 #game #hand .playing-card.selected,#game #hand .playing-card.selected:hover{filter:none;border-color:#f3cd70;box-shadow:inset 0 0 0 2px #fff8df,0 0 0 2px #f5d27a,0 0 22px #f2c66b99,0 10px 18px #0006}
 #game #hand .playing-card.response-material:not(.selected){box-shadow:inset 0 0 0 2px #fbf6e6,0 0 0 2px #9fd6c6,0 0 14px #9fd6c677}
+#game #hand .new-label{left:auto;right:5px;top:5px;padding:0 5px;border-radius:8px;font:600 9px/15px var(--sans);background:#4f7a55;box-shadow:0 1px 3px #0004}
 #game #hand-panel:not(.private-skill) #hand>.card-shell{
  --card-w:82px;--card-h:112px;--overlap:16px;
  flex:0 1 calc(var(--card-w) - var(--overlap));width:auto;min-width:12px;height:var(--card-h);margin-left:0;
@@ -62,9 +63,11 @@
 #game #hand-panel:not(.private-skill) #hand>.card-shell>.playing-card{position:absolute;left:0;bottom:0;width:var(--card-w);height:var(--card-h)}
 #game #hand-panel:not(.private-skill) #hand>.card-shell:hover,#game #hand-panel:not(.private-skill) #hand>.card-shell:focus-within{transform:translateY(-16px) rotate(0) scale(1.04)}
 #game #hand-panel:not(.private-skill) #hand>.card-shell:has(.selected){transform:translateY(-20px) rotate(0)}
-#game #hand-panel:not(.private-skill) #hand{justify-content:center;overflow-x:auto}
+/* safe center keeps the first cards reachable if a very large hand still overflows; the scrollbar is hidden so it never adds height mid-turn (swipe / Shift+wheel still scroll). */
+#game #hand-panel:not(.private-skill) #hand{justify-content:safe center;overflow-x:auto;scrollbar-width:none}
+#game #hand-panel:not(.private-skill) #hand::-webkit-scrollbar{display:none}
 @media(max-height:760px) and (min-width:761px){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:74px;--card-h:102px;--overlap:14px}}
-@media(max-width:760px){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:62px;--card-h:88px;--overlap:12px}#game #hand-panel:not(.private-skill) #hand{padding-left:6px;padding-right:6px}}
+@media(max-width:760px){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:62px;--card-h:88px;--overlap:12px}#game #hand-panel:not(.private-skill) #hand{padding-left:12px;padding-right:12px}}
 @media(max-height:500px) and (orientation:landscape){#game #hand-panel:not(.private-skill) #hand>.card-shell{--card-w:46px;--card-h:64px;--overlap:9px}}
 
 /* ---------- 牌背 ---------- */
@@ -158,3 +161,9 @@ body:has(#game:not([hidden])) .toast{top:58px;bottom:auto!important;border-radiu
 #connect-dialog .room-invite input{font-size:12px}
 #connect-dialog .relay-status{font-size:11px;margin:4px 0 10px}
 #connect-dialog .relay-status:empty{display:none}
+
+/* ---------- 手牌上方操作行：提示文字与按钮同一行，出现／消失不改变高度 ---------- */
+#game .hand-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;column-gap:10px}
+#game .hand-toolbar>.selection-copy{grid-column:1;grid-row:1;justify-self:end;width:auto;max-width:100%;min-width:0;display:flex;flex-direction:row;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+#game .hand-toolbar>.selection-copy>*{overflow:hidden;text-overflow:ellipsis}
+#game .hand-toolbar>#main-actions{grid-column:2;grid-row:1}

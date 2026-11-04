@@ -51,6 +51,8 @@ export class Tabletop {
   get view(){return this.current().view;}
   get me(){return this.view?.players.find(p=>p.id===this.view.you);}
   get busy(){return !!this.current().pending;}
+  // Most confirmations arrive within a frame or two; only say we are waiting when it is actually noticeable.
+  slowBusy(){const p=this.current().pending;if(!p){this.busyId=null;return false;}if(this.busyId!==p.id){this.busyId=p.id;this.busySince=Date.now();clearTimeout(this.busyTimer);this.busyTimer=setTimeout(()=>{if(this.current().pending?.id===p.id)this.refresh();},450);}return Date.now()-this.busySince>=400;}
   ignoreClick(e){return performance.now()<this.ignoreClickUntil&&e?.target.closest('[data-card]')?.dataset.card===this.ignoredCard;}
   show(id){const d=$(id);if(!d.open)d.showModal();}
   detail(title,text){this.scene.detailOrigin=document.activeElement;$('detail-title').textContent=title;$('detail-copy').textContent=text;this.show('detail-dialog');}
@@ -184,8 +186,9 @@ export class Tabletop {
     $('discard-help').innerHTML=discard?`<b class="${over?'over-limit':''}">${this.me.hand.length}</b>/${upper}`:'';
     $('discard-help').setAttribute('aria-label',discard?`手牌${this.me.hand.length}张，上限${upper}，还需选择${counts.remaining}张弃置`:'');
     $('discard-help').title=$('discard-help').getAttribute('aria-label');
-    $('selection-label').textContent=this.busy?'正在等待牌桌确认…':v.pending?(v.tableExperience?'':'按响应区提示选择牌'):!s.ids.length?'':v.mode==='manual'?`已选 ${s.ids.length} 张 · 手动裁定`:advice.ok?v.tableExperience?'':`已选 ${s.ids.map(id=>CARD_MAP[CARD_BY_ID[id].kind].name).join('、')} · 可以使用`:'';
+    $('selection-label').textContent=this.slowBusy()?'正在等待牌桌确认…':v.pending?(v.tableExperience?'':'按响应区提示选择牌'):!s.ids.length?'':v.mode==='manual'?`已选 ${s.ids.length} 张 · 手动裁定`:advice.ok?v.tableExperience?'':`已选 ${s.ids.map(id=>CARD_MAP[CARD_BY_ID[id].kind].name).join('、')} · 可以使用`:'';
     if(this.armedSkill&&!v.tableExperience)$('selection-label').textContent=`${this.armedSkill} · 已选 ${s.ids.length} 张材料 / ${t.length} 名目标`;
+    $('selection-label').toggleAttribute('data-busy',this.busy);
     $('selection-label').parentElement.hidden=!$('selection-label').textContent&&!$('discard-help').textContent;
     document.body.classList.toggle('response-active',!!v.pending);
   }
