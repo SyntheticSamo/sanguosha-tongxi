@@ -37,8 +37,11 @@ if ($LASTEXITCODE -ne 0) { Fail 'Deploy failed. Read the message above; running 
 Step '3/5  Worker address'
 $url = ''
 while (-not $url) {
-  $answer = (Read-Host 'Paste the https://....workers.dev address printed above').Trim().TrimEnd('/')
-  if ($answer -match '^https://[A-Za-z0-9.-]+$') { $url = $answer } else { Write-Host 'That does not look like https://name.subdomain.workers.dev - try again.' }
+  $answer = Read-Host 'Paste the https://....workers.dev address printed above'
+  # Accept a paste with extra text around it; keep only the address itself.
+  if ($answer -match 'https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.workers\.dev') { $url = $Matches[0] }
+  elseif ($answer -match '^\s*(https://[A-Za-z0-9.-]+)/?\s*$') { $url = $Matches[1] }
+  else { Write-Host 'No https://...workers.dev address found in that text - paste just the address line.' }
 }
 $ok = $false
 for ($i = 1; $i -le 12 -and -not $ok; $i++) {
